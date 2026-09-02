@@ -4,30 +4,50 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f3efe4" />
-    <title>Miniopolis</title>
+    <title>Chord</title>
   </head>
   <body>
     <main class="app-shell">
       <header class="masthead">
-        <p class="eyebrow">Miniopolis</p>
-        <h1>Keep every district supplied.</h1>
-        <p class="intro">Balance solar power, water, and food across the whole town.</p>
+        <p class="eyebrow">Chord</p>
+        <h1>Place each symbol in tune.</h1>
+        <p class="intro">Build a grammar of shapes, regions, rows, and columns.</p>
       </header>
 
       <section id="start-menu" class="start-menu" role="dialog" aria-modal="true" aria-labelledby="start-menu-title">
         <div class="start-menu-card">
-          <p class="eyebrow">Miniopolis</p>
-          <h2 id="start-menu-title">A small town, well planned.</h2>
-          <p class="start-menu-intro">Plan a tiny city, one building at a time.</p>
+          <p class="eyebrow">Chord</p>
+          <h2 id="start-menu-title">A grammar of four shapes.</h2>
+          <p class="start-menu-intro">Place symbols through one connected board.</p>
           <div id="start-menu-actions" class="start-menu-actions">
-            <button id="new-game" class="menu-button primary" type="button">New game</button>
+            <button id="new-game" class="menu-button primary" type="button">New chord</button>
             <button id="open-practice" class="menu-button" type="button">Tutorial</button>
             <button id="open-help" class="menu-button" type="button" aria-expanded="false" aria-controls="help-panel">Help</button>
           </div>
 
+          <section id="difficulty-picker" class="difficulty-picker" hidden aria-labelledby="difficulty-title">
+            <h3 id="difficulty-title">New chord</h3>
+            <p>Choose how many fixed clues guide a uniquely solvable 6x6 Chord.</p>
+            <div class="difficulty-choices" role="group" aria-label="Chord difficulty">
+              <button class="difficulty-choice" type="button" data-difficulty="guided">
+                <strong>Guided</strong><span>10 fixed clues</span>
+              </button>
+              <button class="difficulty-choice selected" type="button" data-difficulty="standard">
+                <strong>Standard</strong><span>6 fixed clues</span>
+              </button>
+              <button class="difficulty-choice" type="button" data-difficulty="expert">
+                <strong>Expert</strong><span>2 fixed clues</span>
+              </button>
+            </div>
+            <div class="difficulty-actions">
+              <button id="start-size-game" class="menu-button primary" type="button">Start 6x6 Chord</button>
+            </div>
+            <button id="back-from-difficulty" class="menu-button" type="button">Back</button>
+          </section>
+
           <section id="campaign-picker" class="campaign-picker" hidden aria-labelledby="campaign-picker-title">
-            <h3 id="campaign-picker-title">Practice lessons</h3>
-            <p>Learn one rule at a time, then combine them into a full city plan.</p>
+            <h3 id="campaign-picker-title">Tutorial lessons</h3>
+            <p>Learn the shape grammar one relationship at a time.</p>
             <div id="campaign-levels" class="campaign-levels"></div>
             <div class="campaign-picker-actions">
               <button id="back-from-campaign" class="menu-button" type="button">Back</button>
@@ -35,79 +55,48 @@
             </div>
           </section>
 
-          <section id="size-picker" class="size-picker" hidden aria-labelledby="size-picker-title">
-            <h3 id="size-picker-title">Free play board size</h3>
-            <p>Build a fresh town with all four building types, then choose how many Factory sites to manage.</p>
-            <div class="board-size-choices" role="group" aria-label="Board size">
-              <button class="size-choice selected" type="button" data-board-size="6" aria-pressed="true">
-                <strong>6x6</strong>
-                <span>Standard</span>
-              </button>
-              <button class="size-choice" type="button" data-board-size="8" aria-pressed="false">
-                <strong>8x8</strong>
-                <span>Expert</span>
-              </button>
-            </div>
-            <div class="factory-picker">
-              <div class="factory-picker-heading">
-                <h3>Factory sites</h3>
-                <span id="factory-difficulty">4 Factories · Standard</span>
-              </div>
-              <p class="factory-picker-note">More Factories mean more Steel districts, tighter row, column, and district choices, and more supplier links to plan.</p>
-              <div class="factory-count-choices" role="group" aria-label="Number of Factory sites">
-                <button class="factory-count-choice" type="button" data-factory-count="1" aria-pressed="false">1</button>
-                <button class="factory-count-choice" type="button" data-factory-count="2" aria-pressed="false">2</button>
-                <button class="factory-count-choice" type="button" data-factory-count="3" aria-pressed="false">3</button>
-                <button class="factory-count-choice selected" type="button" data-factory-count="4" aria-pressed="true">4</button>
-                <button class="factory-count-choice" type="button" data-factory-count="5" aria-pressed="false">5</button>
-                <button class="factory-count-choice" type="button" data-factory-count="6" aria-pressed="false">6</button>
-                <button class="factory-count-choice" type="button" data-factory-count="7" aria-pressed="false">7</button>
-                <button class="factory-count-choice" type="button" data-factory-count="8" aria-pressed="false">8</button>
-              </div>
-            </div>
-            <div class="size-picker-actions">
-              <button id="start-size-game" class="menu-button primary" type="button">Start free play</button>
-              <button id="back-to-start" class="menu-button" type="button">Back</button>
-            </div>
-          </section>
-
           <section id="help-panel" class="help-panel" hidden aria-label="How to play">
             <h3>Goal</h3>
-            <p>Place every active building icon once in each row, column, and district so every district receives its required resources. Tutorial levels introduce the building types one rule at a time.</p>
+            <p>Place every active symbol once in each row, column, and region. The small glyphs in a region show the symbols it still requires. Tutorial levels introduce one relationship at a time.</p>
             <h3>Rules</h3>
-            <p>Each building icon must appear once in every row, column, and district unless a level says otherwise. A cell may contain only one building. Dots in a district's upper corner show resources it still needs: green for food, blue for water, gold for power, and red for steel.</p>
-            <div class="help-service-guide" aria-label="Building restrictions">
+            <p>Each symbol must appear once in every row, column, and region unless a level says otherwise. A cell may contain only one symbol. The upper corner of a region shows its missing symbols.</p>
+            <p>A red slash over a Triangle or Square means it does not currently meet its support requirements. It does not count toward its region's needs until the slash disappears.</p>
+            <div class="help-inactive-example" role="img" aria-label="A Square with a red slash that does not count toward its region">
+              <span class="inactive-symbol-icon" aria-hidden="true"><span class="service-icon square"></span></span>
+              <span><strong>Not yet active</strong><small>This Square needs an adjacent Circle and Diamond before it counts.</small></span>
+            </div>
+            <div class="help-service-guide" aria-label="Symbol relationships">
               <article class="help-service-rule">
-                <span class="service-icon power" aria-hidden="true"></span>
+                <span class="service-icon circle" aria-hidden="true"></span>
                 <div>
-                  <strong>Solar panel</strong>
-                  <p>Cannot touch a dam orthogonally.</p>
+                  <strong>Circle</strong>
+                  <p>Cannot share an edge with Diamond.</p>
                 </div>
               </article>
               <article class="help-service-rule">
-                <span class="service-icon pump" aria-hidden="true"></span>
+                <span class="service-icon diamond" aria-hidden="true"></span>
                 <div>
-                  <strong>Dam</strong>
-                  <p>Cannot touch a solar panel. It irrigates nearby farms.</p>
+                  <strong>Diamond</strong>
+                  <p>Cannot share an edge with Circle.</p>
                 </div>
               </article>
               <article class="help-service-rule">
-                <span class="service-icon grocery" aria-hidden="true"></span>
+                <span class="service-icon triangle" aria-hidden="true"></span>
                 <div>
-                  <strong>Farm</strong>
-                  <p>Must touch a dam orthogonally before the plan is complete.</p>
+                  <strong>Triangle</strong>
+                  <p>Counts when it shares an edge with Diamond.</p>
                 </div>
               </article>
               <article class="help-service-rule">
-                <span class="service-icon factory" aria-hidden="true"></span>
+                <span class="service-icon square" aria-hidden="true"></span>
                 <div>
-                  <strong>Factory</strong>
-                  <p>Makes steel when it touches both a Solar Panel and a Dam.</p>
+                  <strong>Square</strong>
+                  <p>Counts when it shares an edge with both Circle and Diamond.</p>
                 </div>
               </article>
             </div>
             <h3>How to play</h3>
-            <p>Select a building, then click a highlighted legal cell. Click a placed building to remove it. Use <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
+            <p>Click an empty cell to choose from the symbols that can legally go there. Click a placed symbol to remove it. Use <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
             <button id="close-help" class="menu-button close-help" type="button">Back</button>
           </section>
         </div>
@@ -122,19 +111,18 @@
         </div>
       </section>
 
-      <section class="game-layout" aria-label="Miniopolis puzzle">
-        <div id="game" aria-label="Miniopolis city planning board"></div>
+      <section class="game-layout" aria-label="Chord puzzle">
+        <div id="game" aria-label="Chord symbol board"></div>
 
         <aside class="controls" aria-label="Puzzle controls">
           <section class="inventory-section">
             <div class="section-heading">
-              <h2>Inventory</h2>
+              <h2>Progress</h2>
               <span id="inventory-count">0 / 18 placed</span>
             </div>
-            <div id="inventory" class="inventory"></div>
             <div id="completion-notice" class="completion-notice" role="status" aria-live="polite" hidden>
-              <strong>City plan approved</strong>
-              <span>Every district has its required resources.</span>
+              <strong>Chord complete</strong>
+              <span>Every requirement is met.</span>
             </div>
           </section>
 
@@ -150,8 +138,27 @@
             <button id="reset" class="control-button danger" type="button">Reset board</button>
           </section>
 
-          <p id="status" class="status" aria-live="polite">Select a building, then choose a district cell.</p>
-          <p class="legend"><span class="generator">o</span> solar panel <span class="water">◇</span> dam <span class="farm">△</span> farm <span class="factory">■</span> factory</p>
+          <p id="status" class="status" aria-live="polite">Click an empty cell to choose a symbol.</p>
+          <p class="legend"><span class="generator">o</span> circle <span class="water">◇</span> diamond <span class="farm">△</span> triangle <span class="factory">■</span> square</p>
+          <section class="rule-summary" aria-label="Symbol relationship rules">
+            <div class="rule-summary-row" aria-label="Circle cannot share an edge with Diamond">
+              <span class="service-icon circle" aria-hidden="true"></span>
+              <span class="rule-operator forbidden" aria-hidden="true">&#xd7;</span>
+              <span class="service-icon diamond" aria-hidden="true"></span>
+            </div>
+            <div class="rule-summary-row" aria-label="Triangle must share an edge with Diamond">
+              <span class="service-icon triangle" aria-hidden="true"></span>
+              <span class="rule-operator" aria-hidden="true">&#x2194;</span>
+              <span class="service-icon diamond" aria-hidden="true"></span>
+            </div>
+            <div class="rule-summary-row" aria-label="Square must share an edge with both Circle and Diamond">
+              <span class="service-icon square" aria-hidden="true"></span>
+              <span class="rule-operator" aria-hidden="true">&#x2194;</span>
+              <span class="service-icon circle" aria-hidden="true"></span>
+              <span class="rule-operator plus" aria-hidden="true">+</span>
+              <span class="service-icon diamond" aria-hidden="true"></span>
+            </div>
+          </section>
         </aside>
       </section>
     </main>

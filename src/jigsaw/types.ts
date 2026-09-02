@@ -1,4 +1,4 @@
-import type { Position } from "../core/types.js";
+import type { Position } from "./position.js";
 
 export const SERVICE_TYPES = ["generator", "water", "farm", "factory"] as const;
 export const RESOURCE_TYPES = ["food", "water", "power", "steel"] as const;

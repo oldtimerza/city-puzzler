@@ -1,12 +1,12 @@
 {
-  "name": "miniopolis",
+  "name": "chord",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "package:itch": "npm run build && cd dist && zip -r ../miniopolis-itch.zip .",
+    "package:itch": "npm run build && cd dist && zip -r ../chord-itch.zip .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -1,8 +1,8 @@
 import Phaser from "phaser";
 
-import type { Position } from "../core/types.js";
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
-import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, legalPositions, supplyingDam, unmetResourcesForRegion, unsuppliedFarms, validatePlacement } from "../jigsaw/rules.js";
+import { samePosition, type Position } from "../jigsaw/position.js";
+import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
 import { SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
 const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
@@ -11,11 +11,11 @@ const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
   farm: 0x6db675,
   factory: 0xb44d4a,
 };
-const RESOURCE_COLORS: Readonly<Record<ResourceType, number>> = {
-  food: SERVICE_COLORS.farm,
-  water: SERVICE_COLORS.water,
-  power: SERVICE_COLORS.generator,
-  steel: SERVICE_COLORS.factory,
+const RESOURCE_SYMBOLS: Readonly<Record<ResourceType, ServiceType>> = {
+  food: "farm",
+  water: "water",
+  power: "generator",
+  steel: "factory",
 };
 const REGION_COLORS = [0xeee6d1, 0xdce9df, 0xe8dfec, 0xf0e0d4, 0xdce5ef, 0xece2ca, 0xdcece9, 0xeee0d1];
 
@@ -39,12 +39,13 @@ export class JigsawScene extends Phaser.Scene {
   private history: ServicePlacement[][] = [];
   private future: ServicePlacement[][] = [];
   private selectedService: ServiceType | null = null;
+  private placementMenuPosition: Position | null = null;
   private puzzle: JigsawPuzzle = generateJigsawLevel(20260901);
   private hoveredCell: Position | null = null;
   private hint: ServicePlacement | null = null;
   private showSolutionPreview = false;
   private solutionRevealed = false;
-  private status = "Select a building, then choose a district cell.";
+  private status = "Click an empty cell to choose a symbol.";
   private boardLeft = 0;
   private boardTop = 0;
   private cellSize = 0;
@@ -65,13 +66,13 @@ export class JigsawScene extends Phaser.Scene {
     if (this.solutionRevealed) {
       this.status = "The solution has been revealed. Start a new practice board to play again.";
     } else if (this.remaining(service) === 0) {
-      this.status = `No ${buildingLabel(service).toLowerCase()} buildings remain to place.`;
+      this.status = `No ${symbolLabel(service).toLowerCase()} symbols remain to place.`;
     } else if (this.selectedService === service) {
       this.selectedService = null;
       this.status = "Selection cleared.";
     } else {
       this.selectedService = service;
-      this.status = `${buildingLabel(service)} selected. ${quotaInstruction(this.level.quotas[service], this.level.size)}`;
+      this.status = `${symbolLabel(service)} selected. ${quotaInstruction(this.level.quotas[service], this.level.size)}`;
     }
 
     this.renderBoard();
@@ -79,6 +80,8 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   undo(): void {
+    this.placementMenuPosition = null;
+
     if (this.solutionRevealed) {
       this.status = "The solution has been revealed. Start a new practice board to play again.";
       this.publishState();
@@ -100,6 +103,8 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   redo(): void {
+    this.placementMenuPosition = null;
+
     if (this.solutionRevealed) {
       this.status = "The solution has been revealed. Start a new practice board to play again.";
       this.publishState();
@@ -121,6 +126,8 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   reset(): void {
+    this.placementMenuPosition = null;
+
     if (this.solutionRevealed) {
       this.status = "The solution has been revealed. Start a new practice board to play again.";
     } else if (this.placements.length === this.clues.length) {
@@ -149,9 +156,24 @@ export class JigsawScene extends Phaser.Scene {
     this.future = [];
     this.selectedService = null;
     this.hint = null;
+    this.placementMenuPosition = null;
     this.showSolutionPreview = false;
     this.solutionRevealed = true;
     this.status = "Solution revealed. This practice board is complete.";
+    this.renderBoard();
+    this.publishState();
+  }
+
+  solveForLab(): void {
+    this.placements = [...this.solution];
+    this.history = [];
+    this.future = [];
+    this.selectedService = null;
+    this.hint = null;
+    this.placementMenuPosition = null;
+    this.showSolutionPreview = false;
+    this.solutionRevealed = false;
+    this.status = "Lab plan approved.";
     this.renderBoard();
     this.publishState();
   }
@@ -167,10 +189,10 @@ export class JigsawScene extends Phaser.Scene {
         : this.solution;
 
       this.hint = candidates.find(
-        (placement) => !this.placements.some((current) => samePosition(current.position, placement.position)) && validatePlacement(this.level, this.placements, placement).length === 0,
+        (placement) => !this.placements.some((current) => samePosition(current.position, placement.position)) && this.placementIssues(placement).length === 0,
       ) ?? null;
       this.status = this.hint
-        ? `Hint: place a ${buildingLabel(this.hint.service).toLowerCase()} building in the highlighted cell.`
+        ? `Hint: place a ${symbolLabel(this.hint.service).toLowerCase()} in the highlighted cell.`
         : "No compatible hint remains for this plan.";
     }
 
@@ -178,13 +200,14 @@ export class JigsawScene extends Phaser.Scene {
     this.publishState();
   }
 
-  loadPuzzle(puzzle: JigsawPuzzle): void {
+  loadPuzzle(puzzle: JigsawPuzzle, placements: readonly ServicePlacement[] = puzzle.clues): void {
     this.puzzle = puzzle;
-    this.placements = [...puzzle.clues];
+    this.placements = [...placements];
     this.history = [];
     this.future = [];
     this.selectedService = null;
     this.hint = null;
+    this.placementMenuPosition = null;
     this.showSolutionPreview = false;
     this.solutionRevealed = false;
     this.status = puzzle.introduction;
@@ -208,7 +231,7 @@ export class JigsawScene extends Phaser.Scene {
       quotas: this.level.quotas,
       canUndo: this.history.length > 0,
       canRedo: this.future.length > 0,
-      complete: isLevelComplete(this.level, this.placements),
+      complete: this.isComplete(),
       solutionRevealed: this.solutionRevealed,
       title: this.puzzle.title,
       status: this.status,
@@ -225,7 +248,9 @@ export class JigsawScene extends Phaser.Scene {
     this.boardTop = Math.floor((this.scale.height - boardSize) / 2);
 
     const displayedPlacements = this.showSolutionPreview ? this.solution : this.placements;
-    const legalCells = this.selectedService && !this.showSolutionPreview ? new Set(legalPositions(this.level, this.placements, this.selectedService).map(positionKey)) : new Set<string>();
+    const legalCells = this.selectedService && !this.showSolutionPreview
+      ? new Set(this.legalPositions(this.selectedService).map(positionKey))
+      : new Set<string>();
 
     this.add
       .text(this.boardLeft, Math.max(9, this.boardTop - 25), this.showSolutionPreview ? "REFERENCE PLAN" : this.puzzle.title.toUpperCase(), {
@@ -259,12 +284,14 @@ export class JigsawScene extends Phaser.Scene {
 
     this.renderDistrictResourceDots(displayedPlacements);
 
+    this.renderPlacementMenu();
+
   }
 
   private renderCell(position: Position, legalCells: ReadonlySet<string>): void {
     const { x, y } = this.cellOrigin(position);
     const region = this.level.regions[position.row]![position.column]!;
-    const fill = REGION_COLORS[region.charCodeAt(0) - "A".charCodeAt(0)]!;
+    const fill = REGION_COLORS[(region.charCodeAt(0) - "A".charCodeAt(0)) % REGION_COLORS.length]!;
     const legal = legalCells.has(positionKey(position));
     const cell = this.add
       .rectangle(x + this.cellSize / 2, y + this.cellSize / 2, this.cellSize - 2, this.cellSize - 2, legal ? 0xbdf0b5 : fill)
@@ -273,13 +300,19 @@ export class JigsawScene extends Phaser.Scene {
     cell.setInteractive({ useHandCursor: true });
     cell.on("pointerdown", () => this.handleCellSelection(position));
     cell.on("pointerover", () => {
+      if (this.placementMenuPosition !== null) {
+        return;
+      }
+
       this.hoveredCell = position;
       this.renderBoard();
     });
     cell.on("pointerout", () => {
       if (this.hoveredCell && samePosition(this.hoveredCell, position)) {
         this.hoveredCell = null;
-        this.renderBoard();
+        if (this.placementMenuPosition === null) {
+          this.renderBoard();
+        }
       }
     });
   }
@@ -326,7 +359,7 @@ export class JigsawScene extends Phaser.Scene {
     }
 
     const candidate = this.createPlacement(hoveredCell);
-    const valid = validatePlacement(this.level, this.placements, candidate).length === 0;
+    const valid = this.placementIssues(candidate).length === 0;
     const { x, y } = this.cellOrigin(hoveredCell);
     const preview = this.add.rectangle(x + this.cellSize / 2, y + this.cellSize / 2, this.cellSize - 12, this.cellSize - 12, valid ? 0x78b884 : 0xcf7772, 0.22);
     preview.setStrokeStyle(2, valid ? 0x3f8a5b : 0xaf4d4d, 0.85);
@@ -340,7 +373,7 @@ export class JigsawScene extends Phaser.Scene {
 
     this.add.rectangle(centerX, centerY, this.cellSize - 12, this.cellSize - 12, color, 0.3).setStrokeStyle(3, 0xffffff, 0.9);
     this.add
-        .text(centerX, centerY, `HINT\n${buildingCode(placement.service)}`, {
+        .text(centerX, centerY, `HINT\n${symbolCode(placement.service)}`, {
         fontFamily: "system-ui, sans-serif",
         fontSize: `${Math.max(10, Math.round(this.cellSize * 0.14))}px`,
         fontStyle: "bold",
@@ -355,8 +388,7 @@ export class JigsawScene extends Phaser.Scene {
     const centerX = x + this.cellSize / 2;
     const centerY = y + this.cellSize / 2;
     const symbolSize = this.cellSize * 0.23;
-    const inactive = (placement.service === "farm" && !isFarmSupplied(displayedPlacements, placement))
-      || (placement.service === "factory" && !isFactorySupplied(displayedPlacements, placement));
+    const inactive = !this.placementIsActive(displayedPlacements, placement);
     const outline = inactive ? 0xb74f4f : 0x30474a;
 
     switch (placement.service) {
@@ -376,13 +408,47 @@ export class JigsawScene extends Phaser.Scene {
         }
         break;
       case "factory":
-        this.add.rectangle(centerX, centerY, symbolSize * 1.6, symbolSize * 1.35, SERVICE_COLORS.factory).setStrokeStyle(2, outline);
+        this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(2, outline);
         break;
     }
 
     if (inactive) {
       this.renderMissingRequirementSlash(centerX, centerY, symbolSize);
     }
+
+    if (!this.showSolutionPreview && this.isClue(placement.position)) {
+      this.renderClueLock(centerX, centerY, symbolSize);
+    }
+  }
+
+  private renderClueLock(centerX: number, centerY: number, symbolSize: number): void {
+    const badgeSize = Math.max(14, Math.round(this.cellSize * 0.24));
+    const badgeX = centerX + symbolSize * 0.95;
+    const badgeY = centerY - symbolSize * 0.95;
+    const badge = this.add.circle(badgeX, badgeY, badgeSize / 2, 0xf8f5ec, 0.98).setStrokeStyle(1, 0x30474a, 0.9);
+    const lock = this.add.graphics();
+    const shackleRadius = badgeSize * 0.18;
+    const bodyWidth = badgeSize * 0.38;
+    const bodyHeight = badgeSize * 0.3;
+
+    lock.lineStyle(1.5, 0x30474a, 1);
+    lock.strokeCircle(badgeX, badgeY - badgeSize * 0.08, shackleRadius);
+    lock.fillStyle(0x30474a, 1);
+    lock.fillRect(badgeX - bodyWidth / 2, badgeY, bodyWidth, bodyHeight);
+    badge.setDepth(10);
+    lock.setDepth(11);
+  }
+
+  private flashLockedClue(position: Position): void {
+    const { x, y } = this.cellOrigin(position);
+    const flash = this.add.rectangle(x + this.cellSize / 2, y + this.cellSize / 2, this.cellSize - 4, this.cellSize - 4, 0xb33e3c, 0.38).setStrokeStyle(3, 0x8f2f2e, 0.9).setDepth(9);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 1_000,
+      onComplete: () => flash.destroy(),
+    });
   }
 
   private renderSupplierLinks(placements: readonly ServicePlacement[]): void {
@@ -432,11 +498,11 @@ export class JigsawScene extends Phaser.Scene {
 
   private renderDistrictResourceDots(placements: readonly ServicePlacement[]): void {
     const regions = [...new Set(this.level.regions.flat())];
-    const radius = Math.max(3, Math.round(this.cellSize * 0.055));
-    const spacing = radius * 2 + Math.max(2, Math.round(this.cellSize * 0.04));
+    const symbolSize = Math.max(3, Math.round(this.cellSize * 0.06));
+    const spacing = symbolSize * 2 + Math.max(3, Math.round(this.cellSize * 0.05));
 
     for (const region of regions) {
-      const unmet = unmetResourcesForRegion(this.level, placements, region);
+      const unmet = unmetResourcesForRegion(this.level, placements, region, (currentPlacements, placement) => this.placementIsActive(currentPlacements, placement));
 
       if (unmet.length === 0) {
         continue;
@@ -444,12 +510,91 @@ export class JigsawScene extends Phaser.Scene {
 
       const anchor = this.regionTopCorner(region);
       const { x, y } = this.cellOrigin(anchor);
-      const startX = x + radius + Math.max(4, Math.round(this.cellSize * 0.07));
-      const centerY = y + radius + Math.max(4, Math.round(this.cellSize * 0.07));
+      const startX = x + symbolSize + Math.max(5, Math.round(this.cellSize * 0.08));
+      const centerY = y + symbolSize + Math.max(5, Math.round(this.cellSize * 0.08));
 
       unmet.forEach((resource, index) => {
-        this.add.circle(startX + index * spacing, centerY, radius, RESOURCE_COLORS[resource]).setStrokeStyle(1, 0x30474a, 0.9);
+        this.renderRequirementSymbol(RESOURCE_SYMBOLS[resource], startX + index * spacing, centerY, symbolSize);
       });
+    }
+  }
+
+  private renderRequirementSymbol(service: ServiceType, centerX: number, centerY: number, symbolSize: number): void {
+    const outline = 0x30474a;
+
+    switch (service) {
+      case "generator":
+        this.add.circle(centerX, centerY, symbolSize, SERVICE_COLORS.generator).setStrokeStyle(1, outline);
+        break;
+      case "water":
+        this.add.rectangle(centerX, centerY, symbolSize * 1.4, symbolSize * 1.4, SERVICE_COLORS.water).setRotation(Math.PI / 4).setStrokeStyle(1, outline);
+        break;
+      case "farm":
+        {
+          const triangle = this.add.graphics();
+          triangle.fillStyle(SERVICE_COLORS.farm);
+          triangle.lineStyle(1, outline);
+          triangle.fillTriangle(centerX, centerY - symbolSize, centerX + symbolSize, centerY + symbolSize, centerX - symbolSize, centerY + symbolSize);
+          triangle.strokeTriangle(centerX, centerY - symbolSize, centerX + symbolSize, centerY + symbolSize, centerX - symbolSize, centerY + symbolSize);
+        }
+        break;
+      case "factory":
+        this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(1, outline);
+        break;
+    }
+  }
+
+  private renderPlacementMenu(): void {
+    const position = this.placementMenuPosition;
+
+    if (position === null) {
+      return;
+    }
+
+    const services = SERVICE_TYPES.filter((service) => this.canPlaceServiceAt(position, service));
+
+    if (services.length === 0) {
+      return;
+    }
+
+    const optionSize = Math.max(36, Math.round(this.cellSize * 0.6));
+    const menuWidth = services.length * optionSize + 12;
+    const menuHeight = optionSize + 12;
+    const cell = this.cellCenter(position);
+    const left = Phaser.Math.Clamp(cell.x - menuWidth / 2, 8, this.scale.width - menuWidth - 8);
+    const top = Phaser.Math.Clamp(cell.y - menuHeight / 2, 8, this.scale.height - menuHeight - 8);
+
+    this.add.rectangle(left + menuWidth / 2, top + menuHeight / 2, menuWidth, menuHeight, 0xf8f5ec, 0.98).setStrokeStyle(2, 0x30474a, 0.95).setDepth(20);
+
+    services.forEach((service, index) => {
+      const centerX = left + 6 + optionSize * index + optionSize / 2;
+      const centerY = top + menuHeight / 2;
+      const option = this.add.rectangle(centerX, centerY, optionSize - 4, optionSize - 4, 0xfffdf7, 1).setStrokeStyle(1, SERVICE_COLORS[service], 0.7).setDepth(21).setInteractive({ useHandCursor: true });
+      this.renderPlacementMenuSymbol(service, centerX, centerY, Math.max(7, optionSize * 0.24));
+      option.on("pointerdown", () => this.placeServiceFromMenu(position, service));
+    });
+  }
+
+  private renderPlacementMenuSymbol(service: ServiceType, centerX: number, centerY: number, symbolSize: number): void {
+    switch (service) {
+      case "generator":
+        this.add.circle(centerX, centerY, symbolSize, SERVICE_COLORS.generator).setStrokeStyle(1, 0x30474a).setDepth(22);
+        break;
+      case "water":
+        this.add.rectangle(centerX, centerY, symbolSize * 1.4, symbolSize * 1.4, SERVICE_COLORS.water).setRotation(Math.PI / 4).setStrokeStyle(1, 0x30474a).setDepth(22);
+        break;
+      case "farm":
+        {
+          const triangle = this.add.graphics().setDepth(22);
+          triangle.fillStyle(SERVICE_COLORS.farm);
+          triangle.lineStyle(1, 0x30474a);
+          triangle.fillTriangle(centerX, centerY - symbolSize, centerX + symbolSize, centerY + symbolSize, centerX - symbolSize, centerY + symbolSize);
+          triangle.strokeTriangle(centerX, centerY - symbolSize, centerX + symbolSize, centerY + symbolSize, centerX - symbolSize, centerY + symbolSize);
+        }
+        break;
+      case "factory":
+        this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(1, 0x30474a).setDepth(22);
+        break;
     }
   }
 
@@ -464,44 +609,105 @@ export class JigsawScene extends Phaser.Scene {
     }
 
     const existingIndex = this.placements.findIndex((placement) => samePosition(placement.position, position));
+    let clickedLockedClue = false;
 
     if (existingIndex >= 0 && this.isClue(position)) {
       this.status = "That starting clue is fixed.";
+      clickedLockedClue = true;
     } else if (existingIndex >= 0) {
       this.commit(this.placements.filter((_, index) => index !== existingIndex));
-      this.status = "Building removed.";
-    } else if (!this.selectedService) {
-      this.status = "Select a building before placing it.";
+      this.placementMenuPosition = null;
+      this.status = "Symbol removed.";
     } else {
-      const candidate = this.createPlacement(position);
-      const issues = validatePlacement(this.level, this.placements, candidate);
-
-      if (issues.length > 0) {
-        this.status = placementMessage(issues[0]!);
-      } else {
-        this.commit([...this.placements, candidate]);
-        const remainingFarms = unsuppliedFarms(this.placements).length;
-        const inactiveFactoryCount = inactiveFactories(this.placements).length;
-        this.status = isLevelComplete(this.level, this.placements)
-          ? "City plan approved."
-          : this.placements.length === totalInventory(this.level.quotas) && remainingFarms > 0
-            ? `${remainingFarms} farm${remainingFarms === 1 ? "" : "s"} still need an adjacent dam.`
-            : this.placements.length === totalInventory(this.level.quotas) && inactiveFactoryCount > 0
-              ? `${inactiveFactoryCount} factor${inactiveFactoryCount === 1 ? "y" : "ies"} still need adjacent power and water.`
-            : `${buildingLabel(candidate.service)} building placed.`;
-
-        if (this.remaining(candidate.service) === 0) {
-          this.selectedService = null;
-        }
-      }
+      this.openPlacementMenu(position);
     }
 
     this.renderBoard();
+
+    if (clickedLockedClue) {
+      this.flashLockedClue(position);
+    }
+
     this.publishState();
   }
 
   private createPlacement(position: Position): ServicePlacement {
     return { service: this.selectedService!, position };
+  }
+
+  private canPlaceServiceAt(position: Position, service: ServiceType): boolean {
+    const candidate = { service, position };
+    return this.placementIssues(candidate).length === 0;
+  }
+
+  private openPlacementMenu(position: Position): void {
+    this.selectedService = null;
+    this.placementMenuPosition = SERVICE_TYPES.some((service) => this.canPlaceServiceAt(position, service)) ? position : null;
+    this.status = this.placementMenuPosition === null
+      ? "No symbols can be placed in that cell."
+      : "Choose a symbol for this cell.";
+  }
+
+  private placeServiceFromMenu(position: Position, service: ServiceType): void {
+    if (!this.canPlaceServiceAt(position, service)) {
+      this.placementMenuPosition = null;
+      this.status = "That placement is no longer available.";
+      this.renderBoard();
+      this.publishState();
+      return;
+    }
+
+    const candidate = { service, position };
+    this.commit([...this.placements, candidate]);
+    this.placementMenuPosition = null;
+    const remainingFarms = this.placements.filter((placement) => placement.service === "farm" && !this.farmIsSupplied(this.placements, placement)).length;
+    const inactiveFactoryCount = inactiveFactories(this.placements).length;
+    const inactive = !this.placementIsActive(this.placements, candidate);
+    this.status = this.isComplete()
+      ? "Chord complete."
+      : this.placements.length === totalInventory(this.level.quotas) && remainingFarms > 0
+        ? `${remainingFarms} triangle${remainingFarms === 1 ? "" : "s"} still need an adjacent diamond.`
+        : this.placements.length === totalInventory(this.level.quotas) && inactiveFactoryCount > 0
+          ? `${inactiveFactoryCount} square${inactiveFactoryCount === 1 ? "" : "s"} still need adjacent circle and diamond.`
+          : inactive
+            ? `${symbolLabel(candidate.service)} placed but inactive until its support requirements are met.`
+            : `${symbolLabel(candidate.service)} placed.`;
+    this.renderBoard();
+    this.publishState();
+  }
+
+  private placementIssues(candidate: ServicePlacement): readonly PlacementIssue[] {
+    return validatePlacement(this.level, this.placements, candidate);
+  }
+
+  private farmIsSupplied(placements: readonly ServicePlacement[], farm: ServicePlacement): boolean {
+    return isFarmSupplied(placements, farm);
+  }
+
+  private placementIsActive(placements: readonly ServicePlacement[], placement: ServicePlacement): boolean {
+    return placement.service === "farm"
+      ? this.farmIsSupplied(placements, placement)
+      : isPlacementActive(placements, placement);
+  }
+
+  private isComplete(): boolean {
+    return isLevelComplete(this.level, this.placements);
+  }
+
+  private legalPositions(service: ServiceType): Position[] {
+    const positions: Position[] = [];
+
+    for (let row = 0; row < this.level.size; row += 1) {
+      for (let column = 0; column < this.level.size; column += 1) {
+        const candidate: ServicePlacement = { service, position: { row, column } };
+
+        if (this.placementIssues(candidate).length === 0) {
+          positions.push(candidate.position);
+        }
+      }
+    }
+
+    return positions;
   }
 
   private commit(next: ServicePlacement[]): void {
@@ -533,7 +739,7 @@ export class JigsawScene extends Phaser.Scene {
       }
     }
 
-    throw new Error(`Unknown district ${region}.`);
+    throw new Error(`Unknown region ${region}.`);
   }
 
   private publishState(): void {
@@ -557,37 +763,33 @@ export class JigsawScene extends Phaser.Scene {
   }
 }
 
-function samePosition(left: Position, right: Position): boolean {
-  return left.row === right.row && left.column === right.column;
-}
-
 function positionKey(position: Position): string {
   return `${position.row}:${position.column}`;
 }
 
-function buildingLabel(service: ServiceType): string {
+function symbolLabel(service: ServiceType): string {
   switch (service) {
     case "generator":
-      return "Solar panel";
+      return "Circle";
     case "water":
-      return "Dam";
+      return "Diamond";
     case "farm":
-      return "Farm";
+      return "Triangle";
     case "factory":
-      return "Factory";
+      return "Square";
   }
 }
 
-function buildingCode(service: ServiceType): string {
+function symbolCode(service: ServiceType): string {
   switch (service) {
     case "generator":
-      return "WND";
+      return "CIR";
     case "water":
-      return "DAM";
+      return "DIA";
     case "farm":
-      return "FRM";
+      return "TRI";
     case "factory":
-      return "FAC";
+      return "SQR";
   }
 }
 
@@ -597,29 +799,29 @@ function totalInventory(quotas: Readonly<Record<ServiceType, ServiceQuota>>): nu
 
 function quotaInstruction(quota: ServiceQuota, size: number): string {
   return quota.total === size && quota.maxPerRow === 1 && quota.maxPerColumn === 1 && quota.maxPerRegion === 1
-    ? "Place one in every row, column, and district."
-    : `Place ${quota.total} in separate rows, columns, and districts.`;
+    ? "Place one in every row, column, and region."
+    : `Place ${quota.total} in separate rows, columns, and regions.`;
 }
 
 function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): string {
   switch (issue) {
     case "out-of-bounds":
-      return "That cell is outside the town plan.";
+      return "That cell is outside the grid.";
     case "occupied-cell":
-      return "Only one building may occupy a cell.";
+      return "Only one symbol may occupy a cell.";
     case "inventory-exhausted":
-      return "No more of that building may be placed.";
+      return "No more of that symbol may be placed.";
     case "row-conflict":
-      return "That row already has this building.";
+      return "That row already has this symbol.";
     case "column-conflict":
-      return "That column already has this building.";
+      return "That column already has this symbol.";
     case "region-conflict":
-      return "That district already has this building.";
+      return "That region already has this symbol.";
     case "generator-water-conflict":
-      return "Solar panels and dams cannot be orthogonally adjacent.";
+      return "Circle and Diamond cannot share an edge.";
     case "farm-dam-missing":
-      return "Farms must be orthogonally adjacent to a dam.";
+      return "Triangle must share an edge with Diamond.";
     case "factory-steel-demand-missing":
-      return "Factories may only be built in districts that need steel.";
+      return "Square may only be placed in a region that requires Square.";
   }
 }

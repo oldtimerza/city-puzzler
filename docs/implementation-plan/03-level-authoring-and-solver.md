@@ -1,4 +1,4 @@
-# Phase 3: Solver And Campaign Foundation
+# Phase 3: Solver And Lesson Foundation
 
 ## Status
 
@@ -6,87 +6,75 @@ In progress. The unique solver, immutable clues, Practice lesson picker, rule ca
 
 ## Goal
 
-Turn the current open Free play board into a sequence of fair, uniquely solvable Miniopolis lessons.
+Turn the current open Classic board into a sequence of fair, uniquely solvable Chord lessons.
+
+See the [canonical grammar](../chord-core-grammar.md).
 
 ## Campaign Structure
 
 The first campaign teaches one rule family at a time.
 
-1. **Irrigation**: a 5x5 board with Dams and Farms. It teaches row, column, and district quotas plus Farm-Dam irrigation. Include fixed Dam clues and explicitly instruct the player to place Dams before Farms.
-2. **Solar Fields**: a 5x5 board with Solar Panels and Dams. It introduces the Solar Panel-Dam exclusion rule with generous starting clues.
-3. **Regional Plan**: a 6x6 board with all three building types, fewer clues, and more irregular district shapes. This is the first standard-difficulty level.
+1. **Triangle Link**: a 5x5 board with Diamonds and Triangles. It teaches row, column, and region quotas plus the Triangle-Diamond dependency. Include fixed Diamond clues and explicitly instruct the player to place Diamonds before Triangles.
+2. **Separated Marks**: a 5x5 board with Circles and Diamonds. It introduces the Circle-Diamond exclusion rule with generous starting clues.
+3. **Three-Part Chord**: a 6x6 board with all three symbols, fewer clues, and more irregular region shapes. This is the first standard-difficulty level.
 
-Later campaign levels should add varied 6x6 and 8x8 district maps before adding another building type.
+Later lessons should add varied 6x6 and 8x8 region maps before adding Square.
 
 ## Level Model
 
-Define an authored Practice lesson separately from the procedural Free play generator:
+Define an authored Practice lesson separately from the procedural Classic generator. A lesson records its identifier, title, introduction, board size, active symbols, region map, immutable clues, full solution, and unlocks.
 
-```ts
-interface CampaignLevel {
-  readonly id: string;
-  readonly title: string;
-  readonly introduction: string;
-  readonly size: 5 | 6 | 8;
-  readonly activeServices: readonly ServiceType[];
-  readonly regions: readonly (readonly string[])[];
-  readonly clues: readonly ServicePlacement[];
-  readonly solution: readonly ServicePlacement[];
-  readonly unlocks: readonly string[];
-}
-```
-
-- Active services have one placement per row, column, and district.
-- Inactive services have no inventory, placement button, or quota.
+- Active symbols have one placement per row, column, and region.
+- Inactive symbols have no inventory, placement button, or quota.
 - Clues are immutable: players cannot remove, overwrite, undo past, or reset them.
 - Reset restores the clue state instead of an empty board.
-- Completion checks only active services and their active relationships.
+- Completion checks only active symbols and their active relationships.
 
-The existing procedural generator remains a separate Free play mode while it only validates one known solution.
+The existing procedural generator remains a separate Classic mode while it only validates one known solution.
 
 ## Solver And Uniqueness
 
-Implement a pure TypeScript solver that accepts board size, active services, districts, clues, and relationship constraints.
+Implement a pure TypeScript solver that accepts board size, active symbols, regions, clues, and relationship constraints.
 
 - Search until it finds zero, one, or two solutions, then stop.
 - Treat clue placements as fixed.
-- Respect row, column, district, occupancy, Solar Panel-Dam, and Farm-Dam constraints throughout the search.
-- Accept campaign levels only when the solver finds exactly one solution.
+- Respect row, column, region, occupancy, Circle-Diamond, and Triangle-Diamond constraints throughout the search.
+- Accept lessons only when the solver finds exactly one solution.
 - Preserve witnesses for zero-solution and multi-solution diagnostics.
 
-The player-facing hint system should evolve from a stored-solution reveal into a solver-derived explanation, such as a district having one remaining Dam candidate or a Farm having one possible adjacent Dam.
+The player-facing hint system should evolve from a stored-solution reveal into a solver-derived explanation, such as a region having one remaining Diamond candidate or a Triangle having one possible adjacent Diamond.
 
 ## Board Profiles
 
-Campaign support extends the current practice grammar in two ways:
+Lesson support extends the current practice grammar in two ways:
 
-- Add curated 5x5 boards with five connected districts of five cells.
-- Support partial building profiles, beginning with the Dam-Farm profile used by Irrigation.
+- Add curated 5x5 boards with five connected regions of five cells.
+- Support partial symbol profiles, beginning with the Diamond-Triangle profile.
 
-Use authored 5x5 district maps for the first tutorial. General-purpose 5x5 procedural topology generation is deferred until Free play needs it.
+Use authored 5x5 region maps for the first tutorial. General-purpose 5x5 procedural topology generation is deferred until Classic mode needs it.
 
-When profile-based campaign levels are implemented, update the canonical grammar so that quotas and relationships apply to a level's active services. The current full Solar Panel-Dam-Farm profile remains the standard profile.
+When profile-based lessons are implemented, update the canonical grammar so that quotas and relationships apply to a level's active symbols. The current full Circle-Diamond-Triangle profile remains the standard profile.
 
 ## Campaign UI And Persistence
 
-Use `Practice` as the lesson level picker:
+Use `Practice` as the lesson picker:
 
-- Show unlocked level cards with title, board size, active-building icons, and a short rule summary.
+- Show unlocked lesson cards with title, board size, active-symbol icons, and a short rule summary.
 - Show locked cards with their preceding completion requirement.
-- Offer the random board-size flow as `New game` Free play.
+- Offer the random board-size flow as Classic mode.
 - Show `Next level` and `Replay` after completion.
-- Persist completed level IDs and unlock state in `localStorage` under a versioned key such as `town-planner.campaign.v1`.
+- Persist completed lesson IDs and unlock state in `localStorage` under a versioned key such as `chord.lessons.v1`.
 
 ## Tests
 
-- A 5x5 district map has five connected districts of five cells.
-- Two-service and three-service profiles validate independently.
+- A 5x5 region map has five connected regions of five cells.
+- Two-symbol and three-symbol profiles validate independently.
 - Fixed clues cannot be removed, overwritten, or reset away.
 - The solver reports zero, one, or multiple solutions correctly.
-- Every shipped campaign level has exactly one solution.
-- Campaign unlock order and persisted completion state restore correctly.
+- Every shipped lesson has exactly one solution.
+- Lesson unlock order and persisted completion state restore correctly.
 - Logical hints identify a valid deduction without guessing.
 
 ## Exit Criteria
 
-Players can complete Irrigation, Solar Fields, and Regional Plan in order. Each level has a unique solution, teaches its advertised rule, preserves progression across refreshes, and provides a useful non-spoiler hint.
+Players can complete Triangle Link, Separated Marks, and Three-Part Chord in order. Each lesson has a unique solution, teaches its advertised rule, preserves progression across refreshes, and provides a useful non-spoiler hint.

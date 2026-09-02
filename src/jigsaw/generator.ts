@@ -1,5 +1,6 @@
-import type { Position } from "../core/types.js";
+import type { Position } from "./position.js";
 import { isFactorySupplied, isLevelComplete, validateLevel, validatePlacement } from "./rules.js";
+import { countSolutions } from "./solver.js";
 import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionResourceRequirements, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
 export const BOARD_SIZES = [5, 6, 8] as const;
@@ -13,6 +14,13 @@ export interface GeneratedJigsawLevel extends JigsawPuzzle {
 }
 
 export type QuotaOverrides = Readonly<Partial<Record<ServiceType, ServiceQuota>>>;
+export type ChordDifficulty = "guided" | "standard" | "expert";
+
+const CHORD_CLUE_COUNTS: Readonly<Record<ChordDifficulty, number>> = {
+  guided: 10,
+  standard: 6,
+  expert: 2,
+};
 
 export function generateJigsawLevel(
   seed: number,
@@ -22,7 +30,7 @@ export function generateJigsawLevel(
   steelRegions: readonly string[] = [],
 ): GeneratedJigsawLevel {
   if (size === 5 && (["generator", "water", "farm"] as const).every((service) => activeServices.includes(service))) {
-    throw new Error("The full Solar Panel-Dam-Farm profile is not supported on a 5x5 board.");
+    throw new Error("The full Circle-Diamond-Triangle profile is not supported on a 5x5 board.");
   }
 
   const random = seededRandom(seed);
@@ -95,10 +103,52 @@ export function generateJigsawLevel(
     clues: [],
     title: `${size}x${size} Practice`,
     introduction: activeServices.includes("factory")
-      ? "Balance solar power, water, food, and steel across a fresh district map."
-      : "Build a balanced city plan with a fresh district map.",
+      ? "Balance all four symbols across a fresh region map."
+      : "Build a balanced shape grammar across a fresh region map.",
     seed,
   };
+}
+
+export function generateChordLevel(seed: number, difficulty: ChordDifficulty = "standard"): GeneratedJigsawLevel {
+  for (let attempt = 0; attempt < 48; attempt += 1) {
+    const candidateSeed = (seed + attempt) >>> 0;
+    const generated = generateJigsawLevel(candidateSeed, 6);
+    const clues = reduceToUniqueClues(generated.level, generated.solution, CHORD_CLUE_COUNTS[difficulty], seededRandom(candidateSeed ^ 0x9e3779b9));
+
+    if (clues.length === CHORD_CLUE_COUNTS[difficulty] && countSolutions(generated.level, clues) === 1) {
+      return {
+        ...generated,
+        clues,
+        title: "Chord",
+        introduction: "Balance every symbol across the board's rows, columns, and regions.",
+      };
+    }
+  }
+
+  throw new Error(`Could not generate a uniquely solvable ${difficulty} Chord from seed ${seed}.`);
+}
+
+function reduceToUniqueClues(
+  level: JigsawLevel,
+  solution: readonly ServicePlacement[],
+  target: number,
+  random: () => number,
+): readonly ServicePlacement[] {
+  let clues = [...solution];
+
+  for (const candidate of shuffled(solution, random)) {
+    if (clues.length <= target) {
+      break;
+    }
+
+    const next = clues.filter((placement) => placement !== candidate);
+
+    if (countSolutions(level, next) === 1) {
+      clues = next;
+    }
+  }
+
+  return clues;
 }
 
 function resourceRequirementsForRegions(

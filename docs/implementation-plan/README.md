@@ -1,54 +1,31 @@
-# Miniopolis Implementation Plan
+# Chord Implementation Record
 
-This directory breaks Miniopolis into independently deliverable phases. The core is a city-themed, partial Jigsaw Sudoku rather than a resource-field reconstruction puzzle. Complete each phase's exit criteria before expanding the scope.
+This directory records Chord's delivery sequence and current design direction. The canonical rules are in [Chord: Core Grammar](../chord-core-grammar.md).
 
-The canonical current rules are in [City Constraint Puzzle: Core Grammar](../city-constraint-puzzle-core-grammar.md).
+## Current Direction
 
-## Technology decisions
+New Chord is a uniquely solvable `6x6` board governed by the Circle, Diamond, Triangle, and Square grammar. Guided, Standard, and Expert vary its immutable clue count. Practice introduces the symbol relationships through single-board lessons.
 
-- TypeScript throughout.
-- Phaser 4 owns rendering, responsive layout, and pointer/keyboard input.
-- Game rules, level validation, solvers, and generation are pure TypeScript and do not import Phaser.
-- Vitest verifies deterministic game logic.
-- Procedural generation creates playable boards. Unique-solution verification and deduction analysis remain future development tools.
+- TypeScript owns rules, validation, generation, and solving independently of Phaser.
+- Phaser owns rendering, responsive layout, and input.
+- Vitest covers deterministic grammar, generation, and difficulty behavior.
+- Curated and generated content is accepted only with a unique solution.
 
-## Core premise
+## Records
 
-- An `N x N` board, where `N` is 6 or 8, is divided into `N` contiguous, irregular districts.
-- The player places Solar Panels, Dams, Farms, and Factory sites.
-- Solar Panels, Dams, and Farms appear exactly once in every row, column, and region. Factory campaign levels use smaller total quotas with at most one Factory in a row, column, or region.
-- A cell may hold only one service.
-- Farms require orthogonally adjacent Dams, while Solar Panels may not be orthogonally adjacent to Dams.
-- A level is complete when every required service placement is legal. Future content must also prove uniqueness.
-
-This is a partial Jigsaw Sudoku: services are the symbols, and irregular town districts are the regions. The town theme becomes mechanically meaningful in later phases through homes, service coverage, population, and expansion.
-
-## Delivery Status
-
-| Phase | Status | Notes |
+| Record | Status | Focus |
 | --- | --- | --- |
-| 1. Rules foundation | Complete | Rules, validation, immediate Farm-Dam placement legality, canonical grammar, and automated tests. |
-| 2. Playable slice | Complete | Responsive Phaser gameplay, hints, Free play boards, and Miniopolis visual styling. |
-| 3. Solver and campaign foundation | In progress | Unique solver, immutable clues, six Practice lessons, Factory quota exceptions, local Steel conversion, and lesson rule cards are implemented; solver-derived non-spoiler hints remain. |
-| 4. Level library and difficulty | Not started | Begins after the first uniquely solvable campaign levels exist. |
-| 5. Population and coverage | Not started | Deferred. |
-| 6. City expansion campaign | Not started | Deferred. |
-| 7. Calibration and prototype release | Not started | Deferred. |
+| 1. Rules foundation | Complete | Base symbol grammar and validation. |
+| 2. Playable slice | Complete | Board interaction and feedback. |
+| 3. Solver and lesson foundation | In progress | Unique clues, lessons, and hints. |
+| 4. Level library and difficulty | Planned | Deduction-led single-layer studies. |
+| 5. Symbol requirements | Historical | Reframed as the present region-mark grammar. |
+| 6. New Chord difficulty | Complete | Unique `6x6` generation and clue profiles. |
+| 7. Calibration and release | Planned | Playtest evidence and accessibility. |
 
-## Phase sequence
-
-1. [Jigsaw rules foundation](01-jigsaw-rules-foundation.md)
-2. [Playable Jigsaw slice](02-playable-jigsaw-slice.md)
-3. [Solver and campaign foundation](03-level-authoring-and-solver.md)
+1. [Rules foundation](01-jigsaw-rules-foundation.md)
+2. [Playable slice](02-playable-jigsaw-slice.md)
+3. [Solver and lesson foundation](03-level-authoring-and-solver.md)
 4. [Level library and difficulty](04-level-library-and-difficulty.md)
-5. [Population and coverage](05-population-and-coverage.md)
-6. [City expansion campaign](06-city-expansion-campaign.md)
-7. [Calibration and prototype release](07-calibration-and-prototype-release.md)
-
-## First delivery target
-
-Phases 1 through 3 form the first playable milestone: generated 6x6 and 8x8 boards with irregular districts, quota-aware service types, conflict feedback, hints, undo, tests, and a known valid solution.
-
-## Deferred scope
-
-Do not introduce homes, service coverage, population, an economy, production chains, adaptive routing, or detailed artwork until irregular-region placement puzzles are understandable and enjoyable.
+5. [Symbol requirements](05-symbol-requirements.md)
+7. [Calibration and release](07-calibration-and-prototype-release.md)

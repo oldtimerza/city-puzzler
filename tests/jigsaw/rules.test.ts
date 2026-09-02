@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION } from "../../src/content/jigsaw-starter-level.js";
-import { BOARD_SIZES, generateJigsawLevel } from "../../src/jigsaw/generator.js";
+import { BOARD_SIZES, generateChordLevel, generateJigsawLevel } from "../../src/jigsaw/generator.js";
+import { countSolutions } from "../../src/jigsaw/solver.js";
 import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, legalPositions, regionAt, resourceSupplyForRegion, supplyingDam, unmetResourcesForRegion, unsuppliedFarms, validateLevel, validatePlacement, validatePlacements } from "../../src/jigsaw/rules.js";
 import type { JigsawLevel, ServicePlacement } from "../../src/jigsaw/types.js";
 
@@ -36,6 +37,14 @@ describe("Jigsaw service rules", () => {
     expect(validateLevel(JIGSAW_STARTER_LEVEL)).toEqual([]);
   });
 
+  it.each(["guided", "standard", "expert"] as const)("generates a uniquely solvable %s Chord", (difficulty) => {
+    const puzzle = generateChordLevel(71, difficulty);
+
+    expect(puzzle.level.size).toBe(6);
+    expect(puzzle.clues).toHaveLength(difficulty === "guided" ? 10 : difficulty === "standard" ? 6 : 2);
+    expect(countSolutions(puzzle.level, puzzle.clues)).toBe(1);
+  });
+
   it("rejects a disconnected region map", () => {
     const disconnected: JigsawLevel = {
       ...JIGSAW_STARTER_LEVEL,
@@ -63,10 +72,10 @@ describe("Jigsaw service rules", () => {
     expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: { row: 0, column: 2 } })).toEqual([]);
     expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: generator.position })).toContain("occupied-cell");
     expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator, water], { service: "farm", position: { row: 0, column: 2 } })).toEqual([]);
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator, water], { service: "farm", position: { row: 4, column: 4 } })).toContain("farm-dam-missing");
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator, water], { service: "farm", position: { row: 4, column: 4 } })).toEqual([]);
   });
 
-  it("requires farms to have water and keeps generators away from water", () => {
+  it("marks unsupported farms inactive and keeps generators away from water", () => {
     const generator: ServicePlacement = { service: "generator", position: { row: 0, column: 0 } };
     const farm: ServicePlacement = { service: "farm", position: { row: 0, column: 1 } };
     const water: ServicePlacement = { service: "water", position: { row: 0, column: 2 } };
@@ -79,6 +88,10 @@ describe("Jigsaw service rules", () => {
     expect(isFarmSupplied([farm, water], farm)).toBe(true);
     expect(supplyingDam([farm, water], farm)).toBe(water);
     expect(unsuppliedFarms([farm, water])).toEqual([]);
+
+    const region = regionAt(JIGSAW_STARTER_LEVEL, farm.position);
+    expect(resourceSupplyForRegion(JIGSAW_STARTER_LEVEL, [farm], region).food).toBe(0);
+    expect(resourceSupplyForRegion(JIGSAW_STARTER_LEVEL, [farm, water], region).food).toBe(1);
   });
 
   it("identifies legal candidate cells and completes only the full valid layout", () => {

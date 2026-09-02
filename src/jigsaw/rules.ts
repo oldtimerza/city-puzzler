@@ -1,10 +1,10 @@
-import { samePosition } from "../core/field.js";
-import type { Position } from "../core/types.js";
+import { samePosition, type Position } from "./position.js";
 import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
 export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-region-size" | "disconnected-region" | "invalid-region-requirements" | "invalid-active-services" | "invalid-quotas";
 
 export type PlacementIssue = "out-of-bounds" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "farm-dam-missing" | "factory-steel-demand-missing";
+export type PlacementActivity = (placements: readonly ServicePlacement[], placement: ServicePlacement) => boolean;
 
 export function validateLevel(level: JigsawLevel): LevelIssue[] {
   const issues: LevelIssue[] = [];
@@ -103,10 +103,6 @@ export function validatePlacement(level: JigsawLevel, placements: readonly Servi
     issues.push("generator-water-conflict");
   }
 
-  if (candidate.service === "farm" && !placements.some((placement) => placement.service === "water" && areOrthogonallyAdjacent(placement.position, candidate.position))) {
-    issues.push("farm-dam-missing");
-  }
-
   if (candidate.service === "factory" && (level.regionRequirements[regionAt(level, candidate.position)]?.steel ?? 0) === 0) {
     issues.push("factory-steel-demand-missing");
   }
@@ -142,9 +138,9 @@ export function isLevelComplete(level: JigsawLevel, placements: readonly Service
     && level.activeServices.every((service) => countService(placements, service) === level.quotas[service].total);
 }
 
-export function unmetResourcesForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string): ResourceType[] {
+export function unmetResourcesForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string, isActive: PlacementActivity = isPlacementActive): ResourceType[] {
   const requirements = level.regionRequirements[region] ?? {};
-  const supplied = resourceSupplyForRegion(level, placements, region);
+  const supplied = resourceSupplyForRegion(level, placements, region, isActive);
   const unmet: ResourceType[] = [];
 
   for (const resource of RESOURCE_TYPES) {
@@ -158,12 +154,12 @@ export function unmetResourcesForRegion(level: JigsawLevel, placements: readonly
   return unmet;
 }
 
-export function resourceSupplyForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string): Readonly<Record<ResourceType, number>> {
+export function resourceSupplyForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string, isActive: PlacementActivity = isPlacementActive): Readonly<Record<ResourceType, number>> {
   const supply: Record<ResourceType, number> = { food: 0, water: 0, power: 0, steel: 0 };
 
   for (const placement of placements) {
     if (regionAt(level, placement.position) === region) {
-      if (placement.service !== "factory" || isFactorySupplied(placements, placement)) {
+      if (isActive(placements, placement)) {
         supply[SERVICE_RESOURCES[placement.service]] += 1;
       }
     }
@@ -183,6 +179,11 @@ export function unsuppliedFarms(placements: readonly ServicePlacement[]): Servic
 export function isFactorySupplied(placements: readonly ServicePlacement[], factory: ServicePlacement): boolean {
   const suppliers = factorySuppliers(placements, factory);
   return suppliers.power !== null && suppliers.water !== null;
+}
+
+export function isPlacementActive(placements: readonly ServicePlacement[], placement: ServicePlacement): boolean {
+  return (placement.service !== "farm" || isFarmSupplied(placements, placement))
+    && (placement.service !== "factory" || isFactorySupplied(placements, placement));
 }
 
 export function inactiveFactories(placements: readonly ServicePlacement[]): ServicePlacement[] {

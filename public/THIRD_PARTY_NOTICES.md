@@ -2,7 +2,7 @@
 
 ## Phaser
 
-Miniopolis includes Phaser, licensed under the MIT License.
+Chord includes Phaser, licensed under the MIT License.
 
 ```text
 The MIT License (MIT)

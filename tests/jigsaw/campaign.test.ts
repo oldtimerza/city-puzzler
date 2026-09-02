@@ -6,7 +6,7 @@ import { countSolutions } from "../../src/jigsaw/solver.js";
 
 describe("tutorial campaign", () => {
   it("provides a uniquely solvable progression from 5x5 to 6x6", () => {
-    expect(CAMPAIGN_LEVELS.map((level) => level.id)).toEqual(["irrigation", "crosswinds", "regional-plan", "foundry-basics", "steelworks", "integrated-plan"]);
+    expect(CAMPAIGN_LEVELS.map((level) => level.id)).toEqual(["pair", "apart", "triad", "square-one", "square-set", "chord"]);
     expect(CAMPAIGN_LEVELS.map((level) => level.boardSize)).toEqual([5, 5, 6, 6, 6, 6]);
     expect(CAMPAIGN_LEVELS.map((level) => level.activeServices)).toEqual([
       ["water", "farm"],
@@ -21,7 +21,7 @@ describe("tutorial campaign", () => {
     expect(CAMPAIGN_LEVELS.every((level) => countSolutions(level.level, level.clues) === 1)).toBe(true);
     expect(CAMPAIGN_LEVELS.slice(-3).map((level) => level.level.quotas.factory.total)).toEqual([2, 3, 3]);
     expect(CAMPAIGN_LEVELS.slice(-3).every((level) => level.clues.every((placement) => placement.service !== "factory"))).toBe(true);
-    expect(CAMPAIGN_LEVELS.filter((level) => level.id !== "steelworks").every((level) => (level.tutorialTip?.length ?? 0) > 0)).toBe(true);
-    expect(CAMPAIGN_LEVELS.find((level) => level.id === "steelworks")?.tutorialTip).toBeUndefined();
+    expect(CAMPAIGN_LEVELS.filter((level) => level.id !== "square-set").every((level) => (level.tutorialTip?.length ?? 0) > 0)).toBe(true);
+    expect(CAMPAIGN_LEVELS.find((level) => level.id === "square-set")?.tutorialTip).toBeUndefined();
   });
 });

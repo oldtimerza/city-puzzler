@@ -1,29 +1,22 @@
-# Miniopolis
+# Chord
 
-Miniopolis is a grid-based city-planning logic puzzle about balancing infrastructure across irregular districts. It combines Jigsaw Sudoku-style row, column, and district quotas with spatial building relationships.
+Chord is an abstract symbol-grammar puzzle. Place Circle, Diamond, Triangle, and Square marks on connected, irregular regions while satisfying line, region, and relationship constraints.
 
-## How To Play
+## New Chord
 
-Each level uses a square board divided into connected, irregular districts.
+New Chord creates a uniquely solvable `6x6` board. Choose a clue profile: **Guided** has 10 immutable clues, **Standard** has 6, and **Expert** has 2.
 
-- Most buildings appear once in every row, column, and district; individual levels can define quota exceptions.
-- A cell can hold only one building.
-- Solar Panels cannot be orthogonally adjacent to Dams.
-- Farms must be orthogonally adjacent to a Dam.
-- Factories produce Steel for their district when orthogonally adjacent to both a Solar Panel and a Dam.
+## Symbol Grammar
 
-The Tutorial teaches these rules in sequence:
+- **Circle** and **Diamond** may not share an edge.
+- **Triangle** counts when it shares an edge with a Diamond.
+- **Square** counts when it shares an edge with both a Circle and a Diamond.
+- A cell holds at most one symbol.
+- Regions display symbol requirements. A matching placed symbol fulfils one requirement in its own region; a Square fulfils its requirement only after both adjacent supports are present.
 
-1. **Irrigation**: 5x5 Dams and Farms.
-2. **Solar Fields**: 5x5 Solar Panels and Dams.
-3. **Regional Plan**: 6x6 with all three building types.
-4. **Foundry Basics**: place two Factories to supply Steel.
-5. **Steelworks**: place three Factories under the same spatial constraints.
-6. **Integrated Plan**: combine Solar Panels, Dams, Farms, and three Factories.
+Tutorial lessons introduce the symbol relationships one at a time. See the [core grammar](docs/chord-core-grammar.md) for the complete formal rules.
 
-`New game` opens randomized Free play on 6x6 or 8x8 boards with all four building types. Choose one to eight Factory sites to control difficulty; a count cannot exceed the selected board size. Every added Factory adds another Steel district and more spatial and supplier constraints. `Tutorial` opens the guided lesson sequence, with a rule card before every level. Tutorial progress is stored locally in the browser.
-
-## Tech Stack
+## Technical Details
 
 - TypeScript
 - Phaser 4.2 for rendering and input
@@ -57,26 +50,25 @@ npm run package:itch
 
 ```text
 src/
-  content/       Campaign definitions and puzzle content
+  content/       Lesson definitions and puzzle content
   game/          Phaser scene and board rendering
   jigsaw/        Rules, generator, solver, and puzzle types
   main.ts        DOM controls, menu flow, and local progress
-  styles.css     Miniopolis interface styling
-tests/           Vitest coverage for rules and campaign levels
+tests/           Vitest coverage for rules, generation, and lessons
 docs/            Canonical grammar and implementation roadmap
 ```
 
 ## Documentation
 
-- [Core grammar](docs/city-constraint-puzzle-core-grammar.md): formal board, quota, and relationship rules.
-- [Implementation plan](docs/implementation-plan/README.md): completed work and upcoming phases.
+- [Core grammar](docs/chord-core-grammar.md): formal symbol and region rules.
+- [Implementation plan](docs/implementation-plan/README.md): current design and delivery record.
 - [itch.io playtest release](docs/itchio-playtest.md): packaging, upload, and verification steps.
 
 ## Contributing
 
-1. Read the core grammar before changing puzzle rules or adding building relationships.
+1. Read the core grammar before changing symbols or relationships.
 2. Keep game logic renderer-independent in `src/jigsaw/`.
-3. Add or update Vitest coverage for every rules, solver, generator, or campaign change.
+3. Add or update Vitest coverage for every rules, solver, generator, or lesson change.
 4. Verify changes before opening a review:
 
    ```bash
@@ -85,5 +77,5 @@ docs/            Canonical grammar and implementation roadmap
    npm run build
    ```
 
-5. Keep player-facing building names aligned with the canonical Solar Panel, Dam, Farm, and Factory terminology.
-6. Update the core grammar and implementation plan when gameplay behavior or delivery status changes.
+5. Keep documentation aligned with the canonical Circle, Diamond, Triangle, and Square terminology.
+6. Update the core grammar and implementation record when gameplay behavior or delivery status changes.
