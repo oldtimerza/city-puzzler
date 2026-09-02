@@ -2,14 +2,19 @@ import Phaser from "phaser";
 
 import type { Direction, Position } from "../core/types.js";
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
-import { isFarmSupplied, isLevelComplete, legalPositions, unsuppliedFarms, validatePlacement } from "../jigsaw/rules.js";
-import { SERVICE_TYPES, type JigsawPuzzle, type ServicePlacement, type ServiceType } from "../jigsaw/types.js";
+import { isFarmSupplied, isLevelComplete, legalPositions, unmetResourcesForRegion, unsuppliedFarms, validatePlacement } from "../jigsaw/rules.js";
+import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceType } from "../jigsaw/types.js";
 
 const DIRECTIONS: readonly Direction[] = ["north", "east", "south", "west"];
 const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
   generator: 0xe5ae35,
   water: 0x49a6c9,
   farm: 0x6db675,
+};
+const RESOURCE_COLORS: Readonly<Record<ResourceType, number>> = {
+  food: SERVICE_COLORS.farm,
+  water: SERVICE_COLORS.water,
+  power: SERVICE_COLORS.generator,
 };
 const REGION_COLORS = [0xeee6d1, 0xdce9df, 0xe8dfec, 0xf0e0d4, 0xdce5ef, 0xece2ca, 0xdcece9, 0xeee0d1];
 
@@ -22,6 +27,7 @@ export interface JigsawViewState {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly complete: boolean;
+  readonly solutionRevealed: boolean;
   readonly title: string;
   readonly status: string;
 }
@@ -38,6 +44,7 @@ export class JigsawScene extends Phaser.Scene {
   private hoveredCell: Position | null = null;
   private hint: ServicePlacement | null = null;
   private showSolutionPreview = false;
+  private solutionRevealed = false;
   private status = "Select a town service, then choose a district cell.";
   private boardLeft = 0;
   private boardTop = 0;
@@ -56,7 +63,9 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   selectService(service: ServiceType): void {
-    if (this.remaining(service) === 0) {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+    } else if (this.remaining(service) === 0) {
       this.status = `All ${serviceLabel(service).toLowerCase()} sites are already placed.`;
     } else if (this.selectedService === service) {
       this.selectedService = null;
@@ -71,6 +80,12 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   rotateSelectedService(): void {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+      this.publishState();
+      return;
+    }
+
     if (!this.selectedService) {
       this.status = "Select a service before rotating it.";
       this.publishState();
@@ -84,6 +99,12 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   undo(): void {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+      this.publishState();
+      return;
+    }
+
     const previous = this.history.pop();
 
     if (!previous) {
@@ -99,6 +120,12 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   redo(): void {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+      this.publishState();
+      return;
+    }
+
     const next = this.future.pop();
 
     if (!next) {
@@ -114,7 +141,9 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   reset(): void {
-    if (this.placements.length === this.clues.length) {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+    } else if (this.placements.length === this.clues.length) {
       this.status = this.clues.length === 0 ? "The board is already clear." : "The board is restored to its clues.";
     } else {
       this.commit([...this.clues]);
@@ -134,8 +163,23 @@ export class JigsawScene extends Phaser.Scene {
     this.renderBoard();
   }
 
+  revealSolution(): void {
+    this.placements = [...this.solution];
+    this.history = [];
+    this.future = [];
+    this.selectedService = null;
+    this.hint = null;
+    this.showSolutionPreview = false;
+    this.solutionRevealed = true;
+    this.status = "Solution revealed. This practice board is complete.";
+    this.renderBoard();
+    this.publishState();
+  }
+
   showHint(): void {
-    if (this.showSolutionPreview) {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+    } else if (this.showSolutionPreview) {
       this.status = "Release the solution preview before requesting a hint.";
     } else {
       const candidates = this.selectedService
@@ -162,6 +206,7 @@ export class JigsawScene extends Phaser.Scene {
     this.selectedService = null;
     this.hint = null;
     this.showSolutionPreview = false;
+    this.solutionRevealed = false;
     this.status = puzzle.introduction;
     this.renderBoard();
     this.publishState();
@@ -185,6 +230,7 @@ export class JigsawScene extends Phaser.Scene {
       canUndo: this.history.length > 0,
       canRedo: this.future.length > 0,
       complete: isLevelComplete(this.level, this.placements),
+      solutionRevealed: this.solutionRevealed,
       title: this.puzzle.title,
       status: this.status,
     };
@@ -229,6 +275,8 @@ export class JigsawScene extends Phaser.Scene {
     for (const placement of displayedPlacements) {
       this.renderService(placement, displayedPlacements);
     }
+
+    this.renderDistrictResourceDots(displayedPlacements);
 
     if (isLevelComplete(this.level, this.placements)) {
       this.renderCompletionBanner();
@@ -328,18 +376,15 @@ export class JigsawScene extends Phaser.Scene {
     const { x, y } = this.cellOrigin(placement.position);
     const centerX = x + this.cellSize / 2;
     const centerY = y + this.cellSize / 2;
-    const marker = markerPosition(centerX, centerY, this.cellSize * 0.25, placement.orientation);
     const symbolSize = this.cellSize * 0.23;
     const outline = placement.service === "farm" && !isFarmSupplied(displayedPlacements, placement) ? 0xb74f4f : 0x30474a;
 
     switch (placement.service) {
       case "generator":
         this.add.circle(centerX, centerY, symbolSize, SERVICE_COLORS.generator).setStrokeStyle(2, outline);
-        this.add.circle(centerX, centerY, symbolSize * 0.28, 0xf9f5e9);
         break;
       case "water":
         this.add.rectangle(centerX, centerY, symbolSize * 1.45, symbolSize * 1.45, SERVICE_COLORS.water).setRotation(Math.PI / 4).setStrokeStyle(2, outline);
-        this.add.circle(centerX, centerY, symbolSize * 0.2, 0xf9f5e9);
         break;
       case "farm":
         {
@@ -350,12 +395,6 @@ export class JigsawScene extends Phaser.Scene {
           triangle.strokeTriangle(centerX, centerY - symbolSize, centerX + symbolSize, centerY + symbolSize, centerX - symbolSize, centerY + symbolSize);
         }
         break;
-    }
-
-    this.add.circle(marker.x, marker.y, Math.max(2.5, this.cellSize * 0.038), 0x30474a);
-
-    if (this.isClue(placement.position)) {
-      this.add.circle(centerX - symbolSize * 0.63, centerY + symbolSize * 0.63, Math.max(2, this.cellSize * 0.027), 0xf9f5e9).setStrokeStyle(1, 0x30474a);
     }
 
     if (placement.service === "farm" && !isFarmSupplied(displayedPlacements, placement)) {
@@ -372,6 +411,7 @@ export class JigsawScene extends Phaser.Scene {
 
   private renderCompletionBanner(): void {
     const width = Math.min(this.scale.width - 32, 420);
+    const resources = this.level.activeServices.map((service) => resourceLabel(SERVICE_RESOURCES[service]));
     this.add.rectangle(this.scale.width / 2, this.scale.height / 2, width, 84, 0xf6f2e7, 0.98).setStrokeStyle(2, 0x3f6f54).setDepth(10);
     this.add
       .text(this.scale.width / 2, this.scale.height / 2 - 12, "TOWN PLAN APPROVED", {
@@ -383,7 +423,7 @@ export class JigsawScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(11);
     this.add
-      .text(this.scale.width / 2, this.scale.height / 2 + 17, "Every district now has wind power, water, and food.", {
+      .text(this.scale.width / 2, this.scale.height / 2 + 17, `Every district now has ${formatList(resources)}.`, {
         fontFamily: "Avenir Next, Trebuchet MS, sans-serif",
         fontSize: "14px",
         color: "#506661",
@@ -392,8 +432,36 @@ export class JigsawScene extends Phaser.Scene {
       .setDepth(11);
   }
 
+  private renderDistrictResourceDots(placements: readonly ServicePlacement[]): void {
+    const regions = [...new Set(this.level.regions.flat())];
+    const radius = Math.max(3, Math.round(this.cellSize * 0.055));
+    const spacing = radius * 2 + Math.max(2, Math.round(this.cellSize * 0.04));
+
+    for (const region of regions) {
+      const unmet = unmetResourcesForRegion(this.level, placements, region);
+
+      if (unmet.length === 0) {
+        continue;
+      }
+
+      const anchor = this.regionTopCorner(region);
+      const { x, y } = this.cellOrigin(anchor);
+      const startX = x + radius + Math.max(4, Math.round(this.cellSize * 0.07));
+      const centerY = y + radius + Math.max(4, Math.round(this.cellSize * 0.07));
+
+      unmet.forEach((resource, index) => {
+        this.add.circle(startX + index * spacing, centerY, radius, RESOURCE_COLORS[resource]).setStrokeStyle(1, 0x30474a, 0.9);
+      });
+    }
+  }
+
   private handleCellSelection(position: Position): void {
-    if (this.showSolutionPreview) {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+      this.renderBoard();
+      this.publishState();
+      return;
+    } else if (this.showSolutionPreview) {
       return;
     }
 
@@ -450,6 +518,18 @@ export class JigsawScene extends Phaser.Scene {
     return { x: this.boardLeft + position.column * this.cellSize, y: this.boardTop + position.row * this.cellSize };
   }
 
+  private regionTopCorner(region: string): Position {
+    for (let row = 0; row < this.level.size; row += 1) {
+      for (let column = 0; column < this.level.size; column += 1) {
+        if (this.level.regions[row]![column] === region) {
+          return { row, column };
+        }
+      }
+    }
+
+    throw new Error(`Unknown district ${region}.`);
+  }
+
   private publishState(): void {
     this.events.emit("statechange", this.getViewState());
   }
@@ -501,21 +581,31 @@ function serviceCode(service: ServiceType): string {
   }
 }
 
-function totalInventory(inventory: Readonly<Record<ServiceType, number>>): number {
-  return SERVICE_TYPES.reduce((total, service) => total + inventory[service], 0);
+function resourceLabel(resource: ResourceType): string {
+  switch (resource) {
+    case "food":
+      return "food";
+    case "water":
+      return "water";
+    case "power":
+      return "power";
+  }
 }
 
-function markerPosition(centerX: number, centerY: number, offset: number, direction: Direction): { x: number; y: number } {
-  switch (direction) {
-    case "north":
-      return { x: centerX, y: centerY - offset };
-    case "east":
-      return { x: centerX + offset, y: centerY };
-    case "south":
-      return { x: centerX, y: centerY + offset };
-    case "west":
-      return { x: centerX - offset, y: centerY };
+function formatList(values: readonly string[]): string {
+  if (values.length < 2) {
+    return values[0] ?? "the required resources";
   }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
+
+function totalInventory(inventory: Readonly<Record<ServiceType, number>>): number {
+  return SERVICE_TYPES.reduce((total, service) => total + inventory[service], 0);
 }
 
 function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): string {

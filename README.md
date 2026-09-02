@@ -22,7 +22,7 @@ The campaign teaches these rules in sequence:
 ## Tech Stack
 
 - TypeScript
-- Phaser 3 for rendering and input
+- Phaser 4.2 for rendering and input
 - Vite for local development and production builds
 - Vitest for rule, generation, solver, and campaign tests
 

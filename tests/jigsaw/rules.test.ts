@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION } from "../../src/content/jigsaw-starter-level.js";
 import { BOARD_SIZES, generateJigsawLevel } from "../../src/jigsaw/generator.js";
-import { isFarmSupplied, isLevelComplete, legalPositions, regionAt, unsuppliedFarms, validateLevel, validatePlacement, validatePlacements } from "../../src/jigsaw/rules.js";
+import { isFarmSupplied, isLevelComplete, legalPositions, regionAt, resourceSupplyForRegion, unmetResourcesForRegion, unsuppliedFarms, validateLevel, validatePlacement, validatePlacements } from "../../src/jigsaw/rules.js";
 import type { JigsawLevel, ServicePlacement } from "../../src/jigsaw/types.js";
 
 describe("Jigsaw service rules", () => {
@@ -74,6 +74,29 @@ describe("Jigsaw service rules", () => {
     expect(validatePlacements(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION)).toEqual([]);
     expect(isLevelComplete(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION)).toBe(true);
     expect(isLevelComplete(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION.slice(0, -1))).toBe(false);
+  });
+
+  it("tracks district resources and requires every district demand to be met", () => {
+    const region = JIGSAW_STARTER_LEVEL.regions[0]![0]!;
+    const supply = resourceSupplyForRegion(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION, region);
+
+    expect(supply).toEqual({ food: 1, water: 1, power: 1 });
+    expect(unmetResourcesForRegion(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION, region)).toEqual([]);
+    expect(unmetResourcesForRegion(JIGSAW_STARTER_LEVEL, [], region)).toEqual(["food", "water", "power"]);
+
+    const extraFoodRequired: JigsawLevel = {
+      ...JIGSAW_STARTER_LEVEL,
+      regionRequirements: {
+        ...JIGSAW_STARTER_LEVEL.regionRequirements,
+        [region]: { ...JIGSAW_STARTER_LEVEL.regionRequirements[region], food: 2 },
+      },
+    };
+
+    expect(validateLevel(extraFoodRequired)).toEqual([]);
+    expect(unmetResourcesForRegion(extraFoodRequired, JIGSAW_STARTER_SOLUTION, region)).toEqual(["food"]);
+    expect(isLevelComplete(extraFoodRequired, JIGSAW_STARTER_SOLUTION)).toBe(false);
+
+    expect(validateLevel({ ...JIGSAW_STARTER_LEVEL, regionRequirements: {} })).toContain("invalid-region-requirements");
   });
 });
 

@@ -53,9 +53,9 @@
 
           <section id="help-panel" class="help-panel" hidden aria-label="How to play">
             <h3>Goal</h3>
-            <p>Place every active building icon once in each row, column, and district. Tutorial levels introduce the building types one rule at a time.</p>
+            <p>Place every active building icon once in each row, column, and district so every district receives its required resources. Tutorial levels introduce the building types one rule at a time.</p>
             <h3>Rules</h3>
-            <p>Each service icon must appear once in every row, column, and district. A cell may contain only one service.</p>
+            <p>Each service icon must appear once in every row, column, and district. A cell may contain only one service. Dots in a district's upper corner show resources it still needs: green for food, blue for water, and gold for power.</p>
             <div class="help-service-guide" aria-label="Service restrictions">
               <article class="help-service-rule">
                 <span class="service-icon power" aria-hidden="true"></span>
@@ -107,12 +107,13 @@
           </section>
 
           <section class="control-section utility-controls" aria-label="Board actions">
+            <button id="main-menu" class="control-button levels" type="button">Main menu</button>
             <button id="levels" class="control-button levels" type="button">Levels</button>
             <button id="refresh" class="control-button refresh" type="button">Refresh puzzle</button>
             <button id="undo" class="control-button" type="button">Undo</button>
              <button id="redo" class="control-button" type="button">Redo</button>
              <button id="hint" class="control-button" type="button" aria-keyshortcuts="T">Hint (T)</button>
-            <button id="show-solution" class="control-button solution" type="button">Hold to show solution</button>
+             <button id="show-solution" class="control-button solution" type="button">Show solution</button>
             <button id="next-level" class="control-button next-level" type="button" hidden>Next level</button>
             <button id="reset" class="control-button danger" type="button">Reset board</button>
           </section>

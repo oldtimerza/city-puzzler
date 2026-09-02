@@ -74,6 +74,8 @@ h1 {
 }
 
 #game {
+  position: relative;
+  z-index: 0;
   width: 100%;
   height: min(65vw, 680px);
   min-height: 360px;
@@ -238,11 +240,12 @@ button:disabled {
 
 .start-menu {
   position: fixed;
-  z-index: 20;
+  z-index: 1000;
   inset: 0;
   display: grid;
   place-items: center;
   padding: 24px;
+  pointer-events: auto;
   background:
     linear-gradient(90deg, rgb(65 82 76 / 4%) 1px, transparent 1px),
     linear-gradient(rgb(65 82 76 / 4%) 1px, transparent 1px),
@@ -262,6 +265,8 @@ button:disabled {
 }
 
 .start-menu-card {
+  position: relative;
+  z-index: 1;
   width: min(100%, 580px);
   padding: clamp(28px, 6vw, 52px);
   border: 2px solid #34474b;
@@ -306,6 +311,8 @@ button:disabled {
   color: #344448;
   background: #fffdf7;
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
   font: inherit;
   font-weight: 800;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;

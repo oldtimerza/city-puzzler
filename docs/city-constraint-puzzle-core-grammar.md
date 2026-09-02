@@ -74,6 +74,20 @@ For every district Di: sum(X[r,c,b] for (r,c) in Di) = 1
 
 Therefore a completed board contains `N` instances of every active building.
 
+## District Resources
+
+Buildings provide resources to the district containing them:
+
+```text
+Farm       -> 1 Food
+Dam        -> 1 Water
+Wind Farm  -> 1 Power
+```
+
+Every current district requires one unit of every resource produced by that level's active buildings. Unmet requirements appear as colored dots at the district's upper corner: green for Food, blue for Water, and gold for Power. A dot disappears when its requirement is supplied.
+
+The existing one-per-district placement rule makes these initial requirements equivalent to the current building profile. Resource requirements are explicit level data so future districts can request different combinations and quantities.
+
 ## Orthogonal Adjacency
 
 For a cell `x = (r,c)`, its orthogonal neighborhood is:
@@ -170,6 +184,7 @@ A board state is solved only when all of the following are true:
 4. Every district has one Wind Farm, one Dam, and one Farm.
 5. No Wind Farm is orthogonally adjacent to a Dam.
 6. Every Farm is orthogonally adjacent to a Dam.
+7. Every district's resource requirements are supplied by buildings in that district.
 
 ## Extension Model
 

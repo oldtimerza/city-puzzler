@@ -7,7 +7,7 @@ The canonical current rules are in [City Constraint Puzzle: Core Grammar](../cit
 ## Technology decisions
 
 - TypeScript throughout.
-- Phaser 3 owns rendering, responsive layout, and pointer/keyboard input.
+- Phaser 4 owns rendering, responsive layout, and pointer/keyboard input.
 - Game rules, level validation, solvers, and generation are pure TypeScript and do not import Phaser.
 - Vitest verifies deterministic game logic.
 - Procedural generation creates playable boards. Unique-solution verification and deduction analysis remain future development tools.

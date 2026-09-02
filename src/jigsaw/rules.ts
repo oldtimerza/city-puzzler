@@ -1,8 +1,8 @@
 import { samePosition } from "../core/field.js";
 import type { Position } from "../core/types.js";
-import { SERVICE_TYPES, type JigsawLevel, type ServicePlacement, type ServiceType } from "./types.js";
+import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type ResourceType, type ServicePlacement, type ServiceType } from "./types.js";
 
-export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-region-size" | "disconnected-region" | "invalid-active-services" | "invalid-inventory";
+export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-region-size" | "disconnected-region" | "invalid-region-requirements" | "invalid-active-services" | "invalid-inventory";
 
 export type PlacementIssue = "out-of-bounds" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "farm-dam-missing";
 
@@ -41,6 +41,17 @@ export function validateLevel(level: JigsawLevel): LevelIssue[] {
 
   if ([...regions.values()].some((cells) => !isConnected(cells))) {
     issues.push("disconnected-region");
+  }
+
+  const regionRequirements = level.regionRequirements;
+  const regionNames = new Set(regions.keys());
+
+  if (
+    Object.keys(regionRequirements).length !== regionNames.size
+    || [...regionNames].some((region) => !hasValidResourceRequirements(regionRequirements[region]))
+    || Object.keys(regionRequirements).some((region) => !regionNames.has(region))
+  ) {
+    issues.push("invalid-region-requirements");
   }
 
   if (SERVICE_TYPES.some((service) => level.inventory[service] !== (activeServices.has(service) ? level.size : 0))) {
@@ -116,7 +127,36 @@ export function isLevelComplete(level: JigsawLevel, placements: readonly Service
   return validateLevel(level).length === 0
     && validatePlacements(level, placements).length === 0
     && unsuppliedFarms(placements).length === 0
+    && [...new Set(level.regions.flat())].every((region) => unmetResourcesForRegion(level, placements, region).length === 0)
     && level.activeServices.every((service) => countService(placements, service) === level.inventory[service]);
+}
+
+export function unmetResourcesForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string): ResourceType[] {
+  const requirements = level.regionRequirements[region] ?? {};
+  const supplied = resourceSupplyForRegion(level, placements, region);
+  const unmet: ResourceType[] = [];
+
+  for (const resource of RESOURCE_TYPES) {
+    const remaining = Math.max(0, (requirements[resource] ?? 0) - supplied[resource]);
+
+    for (let count = 0; count < remaining; count += 1) {
+      unmet.push(resource);
+    }
+  }
+
+  return unmet;
+}
+
+export function resourceSupplyForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string): Readonly<Record<ResourceType, number>> {
+  const supply: Record<ResourceType, number> = { food: 0, water: 0, power: 0 };
+
+  for (const placement of placements) {
+    if (regionAt(level, placement.position) === region) {
+      supply[SERVICE_RESOURCES[placement.service]] += 1;
+    }
+  }
+
+  return supply;
 }
 
 export function isFarmSupplied(placements: readonly ServicePlacement[], farm: ServicePlacement): boolean {
@@ -133,6 +173,12 @@ export function regionAt(level: JigsawLevel, position: Position): string {
 
 function countService(placements: readonly ServicePlacement[], service: ServiceType): number {
   return placements.filter((placement) => placement.service === service).length;
+}
+
+function hasValidResourceRequirements(requirements: JigsawLevel["regionRequirements"][string] | undefined): boolean {
+  return requirements !== undefined
+    && Object.keys(requirements).length > 0
+    && Object.entries(requirements).every(([resource, amount]) => RESOURCE_TYPES.includes(resource as ResourceType) && Number.isInteger(amount) && amount > 0);
 }
 
 function isConnected(cells: readonly Position[]): boolean {

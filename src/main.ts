@@ -14,6 +14,7 @@ const inventoryCount = byId<HTMLSpanElement>("inventory-count");
 const buildingOrientation = byId<HTMLSpanElement>("building-orientation");
 const rotate = byId<HTMLButtonElement>("rotate");
 const refresh = byId<HTMLButtonElement>("refresh");
+const mainMenu = byId<HTMLButtonElement>("main-menu");
 const levels = byId<HTMLButtonElement>("levels");
 const nextLevel = byId<HTMLButtonElement>("next-level");
 const undo = byId<HTMLButtonElement>("undo");
@@ -71,24 +72,13 @@ rotate.addEventListener("click", () => scene().rotateSelectedService());
 document.addEventListener("keydown", rotateWithKey);
 document.addEventListener("keydown", showHintWithKey);
 refresh.addEventListener("click", () => refreshPuzzle());
+mainMenu.addEventListener("click", showMainMenu);
 levels.addEventListener("click", showCampaignPicker);
 nextLevel.addEventListener("click", startNextCampaignLevel);
 undo.addEventListener("click", () => scene().undo());
 redo.addEventListener("click", () => scene().redo());
 hint.addEventListener("click", () => scene().showHint());
-showSolution.addEventListener("pointerdown", startSolutionPreview);
-showSolution.addEventListener("pointerup", stopSolutionPreview);
-showSolution.addEventListener("pointercancel", stopSolutionPreview);
-showSolution.addEventListener("pointerleave", stopSolutionPreview);
-showSolution.addEventListener("lostpointercapture", stopSolutionPreview);
-showSolution.addEventListener("keydown", startSolutionPreviewWithKey);
-showSolution.addEventListener("keyup", stopSolutionPreviewWithKey);
-window.addEventListener("blur", () => stopSolutionPreview());
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    stopSolutionPreview();
-  }
-});
+showSolution.addEventListener("click", () => scene().revealSolution());
 reset.addEventListener("click", () => scene().reset());
 newGame.addEventListener("click", showCampaignPicker);
 openPractice.addEventListener("click", showBoardSizePicker);
@@ -146,7 +136,13 @@ function renderControls(state: JigsawViewState): void {
   redo.disabled = !state.canRedo;
   refresh.hidden = activeCampaignIndex !== null;
   showSolution.hidden = activeCampaignIndex !== null;
-  nextLevel.hidden = !(state.complete && activeCampaignIndex !== null && activeCampaignIndex < CAMPAIGN_LEVELS.length - 1);
+  showSolution.disabled = state.solutionRevealed;
+  showSolution.textContent = "Show solution";
+  hint.disabled = state.solutionRevealed;
+  reset.disabled = state.solutionRevealed;
+  const canContinueCampaign = activeCampaignIndex !== null && activeCampaignIndex < CAMPAIGN_LEVELS.length - 1;
+  nextLevel.hidden = !(state.complete && (activeCampaignIndex === null || canContinueCampaign));
+  nextLevel.textContent = activeCampaignIndex === null ? "Back to menu" : "Next level";
   status.textContent = state.status;
   status.classList.toggle("complete", state.complete);
 }
@@ -190,8 +186,10 @@ function startCampaignLevel(index: number): void {
 }
 
 function startNextCampaignLevel(): void {
-  if (activeCampaignIndex !== null) {
-    startCampaignLevel(activeCampaignIndex + 1);
+  if (activeCampaignIndex === null) {
+    showMainMenu();
+  } else {
+    showCampaignPicker();
   }
 }
 
@@ -219,6 +217,11 @@ function showStartActions(): void {
   helpPanel.hidden = true;
   startMenuActions.hidden = false;
   newGame.focus();
+}
+
+function showMainMenu(): void {
+  startMenu.hidden = false;
+  showStartActions();
 }
 
 function selectBoardSize(size: number): void {
@@ -298,37 +301,6 @@ function closeHelpPanel(): void {
   openHelp.setAttribute("aria-expanded", "false");
   startMenuActions.hidden = false;
   newGame.focus();
-}
-
-function startSolutionPreview(event: PointerEvent): void {
-  showSolution.setPointerCapture(event.pointerId);
-  scene().setSolutionPreview(true);
-}
-
-function stopSolutionPreview(event?: PointerEvent): void {
-  if (event && showSolution.hasPointerCapture(event.pointerId)) {
-    showSolution.releasePointerCapture(event.pointerId);
-  }
-
-  scene().setSolutionPreview(false);
-}
-
-function startSolutionPreviewWithKey(event: KeyboardEvent): void {
-  if (event.repeat || (event.key !== " " && event.key !== "Enter")) {
-    return;
-  }
-
-  event.preventDefault();
-  scene().setSolutionPreview(true);
-}
-
-function stopSolutionPreviewWithKey(event: KeyboardEvent): void {
-  if (event.key !== " " && event.key !== "Enter") {
-    return;
-  }
-
-  event.preventDefault();
-  scene().setSolutionPreview(false);
 }
 
 function rotateWithKey(event: KeyboardEvent): void {

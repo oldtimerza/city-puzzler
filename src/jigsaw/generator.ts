@@ -1,6 +1,6 @@
 import type { Direction, Position } from "../core/types.js";
 import { isLevelComplete, validateLevel } from "./rules.js";
-import { SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type ServicePlacement, type ServiceType } from "./types.js";
+import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionResourceRequirements, type ServicePlacement, type ServiceType } from "./types.js";
 
 export const BOARD_SIZES = [5, 6, 8] as const;
 export type BoardSize = (typeof BOARD_SIZES)[number];
@@ -40,6 +40,7 @@ export function generateJigsawLevel(seed: number, size: BoardSize = 6, activeSer
   const level: JigsawLevel = {
     size,
     regions: transformRegions(regions, size, transform),
+    regionRequirements: resourceRequirementsForRegions(regions, activeServices),
     activeServices,
     inventory: inventoryFor(size, activeServices),
   };
@@ -61,6 +62,19 @@ export function generateJigsawLevel(seed: number, size: BoardSize = 6, activeSer
     introduction: "Build a balanced town plan with a fresh district map.",
     seed,
   };
+}
+
+function resourceRequirementsForRegions(
+  regions: readonly (readonly string[])[],
+  activeServices: readonly ServiceType[],
+): Readonly<Record<string, RegionResourceRequirements>> {
+  const requirements: Record<string, RegionResourceRequirements> = {};
+
+  for (const region of new Set(regions.flat())) {
+    requirements[region] = Object.fromEntries(activeServices.map((service) => [SERVICE_RESOURCES[service], 1]));
+  }
+
+  return requirements;
 }
 
 export function jigsawLevelSignature(puzzle: Pick<JigsawPuzzle, "level" | "solution">): string {
