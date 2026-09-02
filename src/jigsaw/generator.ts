@@ -1,6 +1,6 @@
 import type { Direction, Position } from "../core/types.js";
-import { isLevelComplete, validateLevel } from "./rules.js";
-import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionResourceRequirements, type ServicePlacement, type ServiceType } from "./types.js";
+import { isFactorySupplied, isLevelComplete, validateLevel, validatePlacement } from "./rules.js";
+import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionResourceRequirements, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
 export const BOARD_SIZES = [5, 6, 8] as const;
 export type BoardSize = (typeof BOARD_SIZES)[number];
@@ -13,22 +13,59 @@ export interface GeneratedJigsawLevel extends JigsawPuzzle {
   readonly seed: number;
 }
 
-export function generateJigsawLevel(seed: number, size: BoardSize = 6, activeServices: readonly ServiceType[] = SERVICE_TYPES): GeneratedJigsawLevel {
-  if (size === 5 && activeServices.length === SERVICE_TYPES.length) {
-    throw new Error("The full Wind Farm-Dam-Farm profile is not supported on a 5x5 board.");
+export type QuotaOverrides = Readonly<Partial<Record<ServiceType, ServiceQuota>>>;
+
+export function generateJigsawLevel(
+  seed: number,
+  size: BoardSize = 6,
+  activeServices: readonly ServiceType[] = SERVICE_TYPES,
+  quotaOverrides: QuotaOverrides = {},
+  steelRegions: readonly string[] = [],
+): GeneratedJigsawLevel {
+  if (size === 5 && (["generator", "water", "farm"] as const).every((service) => activeServices.includes(service))) {
+    throw new Error("The full Solar Panel-Dam-Farm profile is not supported on a 5x5 board.");
   }
 
   const random = seededRandom(seed);
   let regions: readonly (readonly string[])[] | null = null;
   let solution: readonly ServicePlacement[] | null = null;
+  let selectedSteelRegions: readonly string[] = steelRegions;
+  const quotas = quotasFor(size, activeServices, quotaOverrides);
+  const requiresFullFactoryLayout = activeServices.includes("factory") && quotas.factory.total === size;
 
   for (let attempt = 0; attempt < 12 && solution === null; attempt += 1) {
     const candidateRegions = buildIrregularRegions(size, random);
-    const candidateSolution = solveServiceLayout(candidateRegions, size, activeServices, random);
+    const baseSolution = solveServiceLayout(candidateRegions, size, activeServices.filter((service) => service !== "factory"), random);
+    const factoryCandidateRegions = steelRegions.length > 0 ? steelRegions : [...new Set(candidateRegions.flat())];
+    const factoryPlacementLevel: JigsawLevel = {
+      size,
+      regions: candidateRegions,
+      regionRequirements: resourceRequirementsForRegions(candidateRegions, activeServices, factoryCandidateRegions, quotas.factory.total),
+      activeServices,
+      quotas,
+    };
+    const candidateSolution = requiresFullFactoryLayout
+      ? solveFullFactoryLayout(factoryPlacementLevel, random)
+      : baseSolution === null
+        ? null
+        : activeServices.includes("factory")
+          ? placeFactories(factoryPlacementLevel, baseSolution, random)
+          : baseSolution;
+    const candidateSteelRegions = activeServices.includes("factory") && steelRegions.length === 0 && candidateSolution !== null
+      ? candidateSolution.filter((placement) => placement.service === "factory").map((placement) => candidateRegions[placement.position.row]![placement.position.column]!)
+      : steelRegions;
+    const candidateLevel: JigsawLevel = {
+      size,
+      regions: candidateRegions,
+      regionRequirements: resourceRequirementsForRegions(candidateRegions, activeServices, candidateSteelRegions, quotas.factory.total),
+      activeServices,
+      quotas,
+    };
 
-    if (candidateSolution !== null) {
+    if (candidateSolution !== null && isLevelComplete(candidateLevel, candidateSolution)) {
       regions = candidateRegions;
       solution = candidateSolution;
+      selectedSteelRegions = candidateSteelRegions;
     }
   }
 
@@ -40,9 +77,9 @@ export function generateJigsawLevel(seed: number, size: BoardSize = 6, activeSer
   const level: JigsawLevel = {
     size,
     regions: transformRegions(regions, size, transform),
-    regionRequirements: resourceRequirementsForRegions(regions, activeServices),
+    regionRequirements: resourceRequirementsForRegions(regions, activeServices, selectedSteelRegions, quotas.factory.total),
     activeServices,
-    inventory: inventoryFor(size, activeServices),
+    quotas,
   };
   const transformedSolution = solution.map((placement) => ({
     ...placement,
@@ -59,7 +96,9 @@ export function generateJigsawLevel(seed: number, size: BoardSize = 6, activeSer
     solution: transformedSolution,
     clues: [],
     title: `${size}x${size} Practice`,
-    introduction: "Build a balanced town plan with a fresh district map.",
+    introduction: activeServices.includes("factory")
+      ? "Balance solar power, water, food, and steel across a fresh district map."
+      : "Build a balanced town plan with a fresh district map.",
     seed,
   };
 }
@@ -67,11 +106,23 @@ export function generateJigsawLevel(seed: number, size: BoardSize = 6, activeSer
 function resourceRequirementsForRegions(
   regions: readonly (readonly string[])[],
   activeServices: readonly ServiceType[],
+  steelRegions: readonly string[],
+  factorySteelDemandCount: number,
 ): Readonly<Record<string, RegionResourceRequirements>> {
   const requirements: Record<string, RegionResourceRequirements> = {};
+  const steelDemandRegions = new Set(
+    steelRegions.length > 0
+      ? steelRegions
+      : activeServices.includes("factory")
+        ? [...new Set(regions.flat())].slice(0, factorySteelDemandCount)
+        : [],
+  );
 
   for (const region of new Set(regions.flat())) {
-    requirements[region] = Object.fromEntries(activeServices.map((service) => [SERVICE_RESOURCES[service], 1]));
+    requirements[region] = {
+      ...Object.fromEntries(activeServices.filter((service) => service !== "factory").map((service) => [SERVICE_RESOURCES[service], 1])),
+      ...(steelDemandRegions.has(region) ? { steel: 1 } : {}),
+    };
   }
 
   return requirements;
@@ -216,9 +267,78 @@ function hasSimpleRegionShape(regions: readonly (readonly string[])[], size: Boa
   });
 }
 
-function solveServiceLayout(regions: readonly (readonly string[])[], size: BoardSize, activeServices: readonly ServiceType[], random: () => number): readonly ServicePlacement[] | null {
+function solveServiceLayout(
+  regions: readonly (readonly string[])[],
+  size: BoardSize,
+  activeServices: readonly ServiceType[],
+  random: () => number,
+  initialPlacements: readonly ServicePlacement[] = [],
+  requireFactorySupport = false,
+): readonly ServicePlacement[] | null {
   const orderedServices = PLACEMENT_ORDER.filter((service) => activeServices.includes(service));
-  return placeServiceInRows(regions, size, orderedServices, random, 0, 0, []);
+  return placeServiceInRows(regions, size, orderedServices, random, 0, 0, initialPlacements, requireFactorySupport);
+}
+
+function solveFullFactoryLayout(level: JigsawLevel, random: () => number): readonly ServicePlacement[] | null {
+  return placeFactoryRows(level.regions, level.size as BoardSize, random, 0, []);
+}
+
+function placeFactoryRows(
+  regions: readonly (readonly string[])[],
+  size: BoardSize,
+  random: () => number,
+  row: number,
+  placements: readonly ServicePlacement[],
+): readonly ServicePlacement[] | null {
+  if (row === size) {
+    return solveServiceLayout(regions, size, ["water", "farm", "generator"], random, placements, true);
+  }
+
+  for (const position of shuffled(allCells(size).filter((cell) => cell.row === row), random)) {
+    const region = regions[position.row]![position.column]!;
+
+    if (placements.some((placement) => placement.position.column === position.column || regions[placement.position.row]![placement.position.column] === region)) {
+      continue;
+    }
+
+    const result = placeFactoryRows(regions, size, random, row + 1, [
+      ...placements,
+      { service: "factory", position, orientation: ORIENTATIONS[Math.floor(random() * ORIENTATIONS.length)]! },
+    ]);
+
+    if (result !== null) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
+function placeFactories(level: JigsawLevel, placements: readonly ServicePlacement[], random: () => number): readonly ServicePlacement[] | null {
+  if (placements.filter((placement) => placement.service === "factory").length === level.quotas.factory.total) {
+    return placements;
+  }
+
+  for (const position of shuffled(allCells(level.size as BoardSize), random)) {
+    const candidate: ServicePlacement = {
+      service: "factory",
+      position,
+      orientation: ORIENTATIONS[Math.floor(random() * ORIENTATIONS.length)]!,
+    };
+    const next = [...placements, candidate];
+
+    if (validatePlacement(level, placements, candidate).length > 0 || !isFactorySupplied(next, candidate)) {
+      continue;
+    }
+
+    const result = placeFactories(level, next, random);
+
+    if (result !== null) {
+      return result;
+    }
+  }
+
+  return null;
 }
 
 function placeServiceInRows(
@@ -229,13 +349,16 @@ function placeServiceInRows(
   serviceIndex: number,
   row: number,
   placements: readonly ServicePlacement[],
+  requireFactorySupport: boolean,
 ): readonly ServicePlacement[] | null {
   if (serviceIndex === orderedServices.length) {
-    return placements;
+    return !requireFactorySupport || placements.filter((placement) => placement.service === "factory").every((factory) => isFactorySupplied(placements, factory))
+      ? placements
+      : null;
   }
 
   if (row === size) {
-    return placeServiceInRows(regions, size, orderedServices, random, serviceIndex + 1, 0, placements);
+    return placeServiceInRows(regions, size, orderedServices, random, serviceIndex + 1, 0, placements, requireFactorySupport);
   }
 
   const service = orderedServices[serviceIndex]!;
@@ -247,7 +370,7 @@ function placeServiceInRows(
     if (
       sameService.some((placement) => placement.position.column === position.column || regions[placement.position.row]![placement.position.column] === region)
       || placements.some((placement) => placement.position.row === position.row && placement.position.column === position.column)
-      || !servicePositionIsAllowed(service, position, placements)
+      || !servicePositionIsAllowed(service, position, placements, requireFactorySupport)
     ) {
       continue;
     }
@@ -255,7 +378,7 @@ function placeServiceInRows(
     const result = placeServiceInRows(regions, size, orderedServices, random, serviceIndex, row + 1, [
       ...placements,
       { service, position, orientation: ORIENTATIONS[Math.floor(random() * ORIENTATIONS.length)]! },
-    ]);
+    ], requireFactorySupport);
 
     if (result !== null) {
       return result;
@@ -265,7 +388,15 @@ function placeServiceInRows(
   return null;
 }
 
-function servicePositionIsAllowed(service: ServiceType, position: Position, placements: readonly ServicePlacement[]): boolean {
+function servicePositionIsAllowed(service: ServiceType, position: Position, placements: readonly ServicePlacement[], requireFactorySupport: boolean): boolean {
+  if (
+    requireFactorySupport
+    && (service === "water" || service === "generator")
+    && !placements.some((placement) => placement.service === "factory" && areOrthogonallyAdjacent(placement.position, position))
+  ) {
+    return false;
+  }
+
   if (service === "water" || service === "generator") {
     const conflictingService = service === "water" ? "generator" : "water";
     return placements.filter((placement) => placement.service === conflictingService).every((placement) => !areOrthogonallyAdjacent(placement.position, position));
@@ -297,12 +428,18 @@ function copyRegions(regions: readonly (readonly string[])[]): string[][] {
   return regions.map((row) => [...row]);
 }
 
-function inventoryFor(size: BoardSize, activeServices: readonly ServiceType[]): Readonly<Record<ServiceType, number>> {
-  return {
-    generator: activeServices.includes("generator") ? size : 0,
-    water: activeServices.includes("water") ? size : 0,
-    farm: activeServices.includes("farm") ? size : 0,
-  };
+function quotasFor(size: BoardSize, activeServices: readonly ServiceType[], overrides: QuotaOverrides): Readonly<Record<ServiceType, ServiceQuota>> {
+  return Object.fromEntries(
+    SERVICE_TYPES.map((service) => [
+      service,
+      overrides[service] ?? {
+        total: activeServices.includes(service) ? service === "factory" ? Math.min(4, size) : size : 0,
+        maxPerRow: activeServices.includes(service) ? 1 : 0,
+        maxPerColumn: activeServices.includes(service) ? 1 : 0,
+        maxPerRegion: activeServices.includes(service) ? 1 : 0,
+      },
+    ]),
+  ) as Readonly<Record<ServiceType, ServiceQuota>>;
 }
 
 function allCells(size: BoardSize): readonly Position[] {

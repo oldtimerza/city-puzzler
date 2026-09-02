@@ -6,18 +6,22 @@ Town Planner is a grid-based logic puzzle about balancing infrastructure across 
 
 Each level uses a square board divided into connected, irregular districts.
 
-- Place one of every active building in each row, column, and district.
+- Most buildings appear once in every row, column, and district; individual levels can define quota exceptions.
 - A cell can hold only one building.
-- Wind Farms cannot be orthogonally adjacent to Dams.
+- Solar Panels cannot be orthogonally adjacent to Dams.
 - Farms must be orthogonally adjacent to a Dam.
+- Factories produce Steel for their district when orthogonally adjacent to both a Solar Panel and a Dam.
 
 The campaign teaches these rules in sequence:
 
 1. **Irrigation**: 5x5 Dams and Farms.
-2. **Crosswinds**: 5x5 Wind Farms and Dams.
+2. **Solar Fields**: 5x5 Solar Panels and Dams.
 3. **Regional Plan**: 6x6 with all three building types.
+4. **Foundry Basics**: place two Factories to supply Steel.
+5. **Steelworks**: place three Factories under the same spatial constraints.
+6. **Integrated Plan**: combine Solar Panels, Dams, Farms, and three Factories.
 
-`New game` opens the campaign. `Practice` offers randomized 6x6 and 8x8 boards. Campaign progress is stored locally in the browser.
+`New game` opens randomized Free play on 6x6 or 8x8 boards with all four building types. Choose one to eight Factory sites to control difficulty; a count cannot exceed the selected board size. Every added Factory adds another Steel district and more spatial and supplier constraints. `Practice` opens the guided level sequence, with a rule card before every lesson. Tutorial progress is stored locally in the browser.
 
 ## Tech Stack
 
@@ -79,5 +83,5 @@ docs/            Canonical grammar and implementation roadmap
    npm run build
    ```
 
-5. Keep player-facing building names aligned with the canonical Wind Farm, Dam, and Farm terminology.
+5. Keep player-facing building names aligned with the canonical Solar Panel, Dam, Farm, and Factory terminology.
 6. Update the core grammar and implementation plan when gameplay behavior or delivery status changes.

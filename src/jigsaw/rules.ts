@@ -1,10 +1,10 @@
 import { samePosition } from "../core/field.js";
 import type { Position } from "../core/types.js";
-import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type ResourceType, type ServicePlacement, type ServiceType } from "./types.js";
+import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
-export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-region-size" | "disconnected-region" | "invalid-region-requirements" | "invalid-active-services" | "invalid-inventory";
+export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-region-size" | "disconnected-region" | "invalid-region-requirements" | "invalid-active-services" | "invalid-quotas";
 
-export type PlacementIssue = "out-of-bounds" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "farm-dam-missing";
+export type PlacementIssue = "out-of-bounds" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "farm-dam-missing" | "factory-steel-demand-missing";
 
 export function validateLevel(level: JigsawLevel): LevelIssue[] {
   const issues: LevelIssue[] = [];
@@ -17,6 +17,13 @@ export function validateLevel(level: JigsawLevel): LevelIssue[] {
 
   if (activeServices.size === 0 || activeServices.size !== level.activeServices.length || [...activeServices].some((service) => !SERVICE_TYPES.includes(service))) {
     issues.push("invalid-active-services");
+  }
+
+  if (
+    SERVICE_TYPES.some((service) => !hasValidQuota(level.quotas[service], level.size))
+    || SERVICE_TYPES.some((service) => activeServices.has(service) !== (level.quotas[service].total > 0))
+  ) {
+    issues.push("invalid-quotas");
   }
 
   if (level.regions.length !== level.size || level.regions.some((row) => row.length !== level.size)) {
@@ -50,12 +57,10 @@ export function validateLevel(level: JigsawLevel): LevelIssue[] {
     Object.keys(regionRequirements).length !== regionNames.size
     || [...regionNames].some((region) => !hasValidResourceRequirements(regionRequirements[region]))
     || Object.keys(regionRequirements).some((region) => !regionNames.has(region))
+    || !resourceRequirementsMatchActiveServices(level)
+    || totalResourceRequirement(level, "steel") !== level.quotas.factory.total
   ) {
     issues.push("invalid-region-requirements");
-  }
-
-  if (SERVICE_TYPES.some((service) => level.inventory[service] !== (activeServices.has(service) ? level.size : 0))) {
-    issues.push("invalid-inventory");
   }
 
   return issues;
@@ -73,19 +78,21 @@ export function validatePlacement(level: JigsawLevel, placements: readonly Servi
     issues.push("occupied-cell");
   }
 
-  if (countService(placements, candidate.service) >= level.inventory[candidate.service]) {
+  const quota = level.quotas[candidate.service];
+
+  if (countService(placements, candidate.service) >= quota.total) {
     issues.push("inventory-exhausted");
   }
 
-  if (placements.some((placement) => placement.service === candidate.service && placement.position.row === candidate.position.row)) {
+  if (countServiceInRow(placements, candidate.service, candidate.position.row) >= quota.maxPerRow) {
     issues.push("row-conflict");
   }
 
-  if (placements.some((placement) => placement.service === candidate.service && placement.position.column === candidate.position.column)) {
+  if (countServiceInColumn(placements, candidate.service, candidate.position.column) >= quota.maxPerColumn) {
     issues.push("column-conflict");
   }
 
-  if (placements.some((placement) => placement.service === candidate.service && regionAt(level, placement.position) === regionAt(level, candidate.position))) {
+  if (countServiceInRegion(level, placements, candidate.service, regionAt(level, candidate.position)) >= quota.maxPerRegion) {
     issues.push("region-conflict");
   }
 
@@ -98,6 +105,10 @@ export function validatePlacement(level: JigsawLevel, placements: readonly Servi
 
   if (candidate.service === "farm" && !placements.some((placement) => placement.service === "water" && areOrthogonallyAdjacent(placement.position, candidate.position))) {
     issues.push("farm-dam-missing");
+  }
+
+  if (candidate.service === "factory" && (level.regionRequirements[regionAt(level, candidate.position)]?.steel ?? 0) === 0) {
+    issues.push("factory-steel-demand-missing");
   }
 
   return issues;
@@ -128,7 +139,7 @@ export function isLevelComplete(level: JigsawLevel, placements: readonly Service
     && validatePlacements(level, placements).length === 0
     && unsuppliedFarms(placements).length === 0
     && [...new Set(level.regions.flat())].every((region) => unmetResourcesForRegion(level, placements, region).length === 0)
-    && level.activeServices.every((service) => countService(placements, service) === level.inventory[service]);
+    && level.activeServices.every((service) => countService(placements, service) === level.quotas[service].total);
 }
 
 export function unmetResourcesForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string): ResourceType[] {
@@ -148,11 +159,13 @@ export function unmetResourcesForRegion(level: JigsawLevel, placements: readonly
 }
 
 export function resourceSupplyForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string): Readonly<Record<ResourceType, number>> {
-  const supply: Record<ResourceType, number> = { food: 0, water: 0, power: 0 };
+  const supply: Record<ResourceType, number> = { food: 0, water: 0, power: 0, steel: 0 };
 
   for (const placement of placements) {
     if (regionAt(level, placement.position) === region) {
-      supply[SERVICE_RESOURCES[placement.service]] += 1;
+      if (placement.service !== "factory" || isFactorySupplied(placements, placement)) {
+        supply[SERVICE_RESOURCES[placement.service]] += 1;
+      }
     }
   }
 
@@ -160,11 +173,37 @@ export function resourceSupplyForRegion(level: JigsawLevel, placements: readonly
 }
 
 export function isFarmSupplied(placements: readonly ServicePlacement[], farm: ServicePlacement): boolean {
-  return farm.service === "farm" && placements.some((placement) => placement.service === "water" && areOrthogonallyAdjacent(placement.position, farm.position));
+  return supplyingDam(placements, farm) !== null;
 }
 
 export function unsuppliedFarms(placements: readonly ServicePlacement[]): ServicePlacement[] {
   return placements.filter((placement) => placement.service === "farm" && !isFarmSupplied(placements, placement));
+}
+
+export function isFactorySupplied(placements: readonly ServicePlacement[], factory: ServicePlacement): boolean {
+  const suppliers = factorySuppliers(placements, factory);
+  return suppliers.power !== null && suppliers.water !== null;
+}
+
+export function inactiveFactories(placements: readonly ServicePlacement[]): ServicePlacement[] {
+  return placements.filter((placement) => placement.service === "factory" && !isFactorySupplied(placements, placement));
+}
+
+export function supplyingDam(placements: readonly ServicePlacement[], farm: ServicePlacement): ServicePlacement | null {
+  return farm.service === "farm"
+    ? placements.find((placement) => placement.service === "water" && areOrthogonallyAdjacent(placement.position, farm.position)) ?? null
+    : null;
+}
+
+export function factorySuppliers(placements: readonly ServicePlacement[], factory: ServicePlacement): Readonly<{ power: ServicePlacement | null; water: ServicePlacement | null }> {
+  if (factory.service !== "factory") {
+    return { power: null, water: null };
+  }
+
+  return {
+    power: placements.find((placement) => placement.service === "generator" && areOrthogonallyAdjacent(placement.position, factory.position)) ?? null,
+    water: placements.find((placement) => placement.service === "water" && areOrthogonallyAdjacent(placement.position, factory.position)) ?? null,
+  };
 }
 
 export function regionAt(level: JigsawLevel, position: Position): string {
@@ -175,10 +214,45 @@ function countService(placements: readonly ServicePlacement[], service: ServiceT
   return placements.filter((placement) => placement.service === service).length;
 }
 
+function countServiceInRow(placements: readonly ServicePlacement[], service: ServiceType, row: number): number {
+  return placements.filter((placement) => placement.service === service && placement.position.row === row).length;
+}
+
+function countServiceInColumn(placements: readonly ServicePlacement[], service: ServiceType, column: number): number {
+  return placements.filter((placement) => placement.service === service && placement.position.column === column).length;
+}
+
+function countServiceInRegion(level: JigsawLevel, placements: readonly ServicePlacement[], service: ServiceType, region: string): number {
+  return placements.filter((placement) => placement.service === service && regionAt(level, placement.position) === region).length;
+}
+
 function hasValidResourceRequirements(requirements: JigsawLevel["regionRequirements"][string] | undefined): boolean {
   return requirements !== undefined
     && Object.keys(requirements).length > 0
     && Object.entries(requirements).every(([resource, amount]) => RESOURCE_TYPES.includes(resource as ResourceType) && Number.isInteger(amount) && amount > 0);
+}
+
+function hasValidQuota(quota: ServiceQuota | undefined, size: number): quota is ServiceQuota {
+  return quota !== undefined
+    && Number.isInteger(quota.total)
+    && Number.isInteger(quota.maxPerRow)
+    && Number.isInteger(quota.maxPerColumn)
+    && Number.isInteger(quota.maxPerRegion)
+    && quota.total >= 0
+    && quota.total <= size * size
+    && quota.maxPerRow >= 0
+    && quota.maxPerColumn >= 0
+    && quota.maxPerRegion >= 0;
+}
+
+function resourceRequirementsMatchActiveServices(level: JigsawLevel): boolean {
+  const activeResources = new Set(level.activeServices.map((service) => SERVICE_RESOURCES[service]));
+
+  return Object.values(level.regionRequirements).every((requirements) => Object.keys(requirements).every((resource) => activeResources.has(resource as ResourceType)));
+}
+
+function totalResourceRequirement(level: JigsawLevel, resource: ResourceType): number {
+  return Object.values(level.regionRequirements).reduce((total, requirements) => total + (requirements[resource] ?? 0), 0);
 }
 
 function isConnected(cells: readonly Position[]): boolean {

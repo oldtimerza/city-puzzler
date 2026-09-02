@@ -2,19 +2,21 @@ import Phaser from "phaser";
 
 import type { Direction, Position } from "../core/types.js";
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
-import { isFarmSupplied, isLevelComplete, legalPositions, unmetResourcesForRegion, unsuppliedFarms, validatePlacement } from "../jigsaw/rules.js";
-import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceType } from "../jigsaw/types.js";
+import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, legalPositions, supplyingDam, unmetResourcesForRegion, unsuppliedFarms, validatePlacement } from "../jigsaw/rules.js";
+import { SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
 const DIRECTIONS: readonly Direction[] = ["north", "east", "south", "west"];
 const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
   generator: 0xe5ae35,
   water: 0x49a6c9,
   farm: 0x6db675,
+  factory: 0xb44d4a,
 };
 const RESOURCE_COLORS: Readonly<Record<ResourceType, number>> = {
   food: SERVICE_COLORS.farm,
   water: SERVICE_COLORS.water,
   power: SERVICE_COLORS.generator,
+  steel: SERVICE_COLORS.factory,
 };
 const REGION_COLORS = [0xeee6d1, 0xdce9df, 0xe8dfec, 0xf0e0d4, 0xdce5ef, 0xece2ca, 0xdcece9, 0xeee0d1];
 
@@ -23,7 +25,7 @@ export interface JigsawViewState {
   readonly activeServices: readonly ServiceType[];
   readonly placements: readonly ServicePlacement[];
   readonly orientation: Direction;
-  readonly inventory: Readonly<Record<ServiceType, number>>;
+  readonly quotas: Readonly<Record<ServiceType, ServiceQuota>>;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly complete: boolean;
@@ -72,7 +74,7 @@ export class JigsawScene extends Phaser.Scene {
       this.status = "Selection cleared.";
     } else {
       this.selectedService = service;
-      this.status = `${serviceLabel(service)} selected. Place one in every row, column, and district.`;
+      this.status = `${serviceLabel(service)} selected. ${quotaInstruction(this.level.quotas[service], this.level.size)}`;
     }
 
     this.renderBoard();
@@ -226,7 +228,7 @@ export class JigsawScene extends Phaser.Scene {
       activeServices: this.level.activeServices,
       placements: this.placements,
       orientation: this.orientation,
-      inventory: this.level.inventory,
+      quotas: this.level.quotas,
       canUndo: this.history.length > 0,
       canRedo: this.future.length > 0,
       complete: isLevelComplete(this.level, this.placements),
@@ -272,15 +274,14 @@ export class JigsawScene extends Phaser.Scene {
       this.renderHint(this.hint);
     }
 
+    this.renderSupplierLinks(displayedPlacements);
+
     for (const placement of displayedPlacements) {
       this.renderService(placement, displayedPlacements);
     }
 
     this.renderDistrictResourceDots(displayedPlacements);
 
-    if (isLevelComplete(this.level, this.placements)) {
-      this.renderCompletionBanner();
-    }
   }
 
   private renderCell(position: Position, legalCells: ReadonlySet<string>): void {
@@ -377,7 +378,9 @@ export class JigsawScene extends Phaser.Scene {
     const centerX = x + this.cellSize / 2;
     const centerY = y + this.cellSize / 2;
     const symbolSize = this.cellSize * 0.23;
-    const outline = placement.service === "farm" && !isFarmSupplied(displayedPlacements, placement) ? 0xb74f4f : 0x30474a;
+    const inactive = (placement.service === "farm" && !isFarmSupplied(displayedPlacements, placement))
+      || (placement.service === "factory" && !isFactorySupplied(displayedPlacements, placement));
+    const outline = inactive ? 0xb74f4f : 0x30474a;
 
     switch (placement.service) {
       case "generator":
@@ -395,41 +398,59 @@ export class JigsawScene extends Phaser.Scene {
           triangle.strokeTriangle(centerX, centerY - symbolSize, centerX + symbolSize, centerY + symbolSize, centerX - symbolSize, centerY + symbolSize);
         }
         break;
+      case "factory":
+        this.add.rectangle(centerX, centerY, symbolSize * 1.6, symbolSize * 1.35, SERVICE_COLORS.factory).setStrokeStyle(2, outline);
+        break;
     }
 
-    if (placement.service === "farm" && !isFarmSupplied(displayedPlacements, placement)) {
-      this.add
-        .text(centerX + symbolSize, centerY - symbolSize, "!", {
-          fontFamily: "Avenir Next, Trebuchet MS, sans-serif",
-          fontSize: `${Math.max(14, Math.round(this.cellSize * 0.2))}px`,
-          fontStyle: "bold",
-          color: "#a84040",
-        })
-        .setOrigin(0.5);
+    if (inactive) {
+      this.renderMissingRequirementSlash(centerX, centerY, symbolSize);
     }
   }
 
-  private renderCompletionBanner(): void {
-    const width = Math.min(this.scale.width - 32, 420);
-    const resources = this.level.activeServices.map((service) => resourceLabel(SERVICE_RESOURCES[service]));
-    this.add.rectangle(this.scale.width / 2, this.scale.height / 2, width, 84, 0xf6f2e7, 0.98).setStrokeStyle(2, 0x3f6f54).setDepth(10);
-    this.add
-      .text(this.scale.width / 2, this.scale.height / 2 - 12, "TOWN PLAN APPROVED", {
-        fontFamily: "Avenir Next, Trebuchet MS, sans-serif",
-        fontSize: "22px",
-        fontStyle: "bold",
-        color: "#2f6644",
-      })
-      .setOrigin(0.5)
-      .setDepth(11);
-    this.add
-      .text(this.scale.width / 2, this.scale.height / 2 + 17, `Every district now has ${formatList(resources)}.`, {
-        fontFamily: "Avenir Next, Trebuchet MS, sans-serif",
-        fontSize: "14px",
-        color: "#506661",
-      })
-      .setOrigin(0.5)
-      .setDepth(11);
+  private renderSupplierLinks(placements: readonly ServicePlacement[]): void {
+    for (const placement of placements) {
+      if (placement.service === "farm") {
+        const dam = supplyingDam(placements, placement);
+
+        if (dam) {
+          this.renderSupplierLink(placement, dam);
+        }
+      }
+
+      if (placement.service === "factory") {
+        const suppliers = factorySuppliers(placements, placement);
+
+        if (suppliers.power) {
+          this.renderSupplierLink(placement, suppliers.power);
+        }
+
+        if (suppliers.water) {
+          this.renderSupplierLink(placement, suppliers.water);
+        }
+      }
+    }
+  }
+
+  private renderSupplierLink(dependent: ServicePlacement, supplier: ServicePlacement): void {
+    const start = this.cellCenter(dependent.position);
+    const end = this.cellCenter(supplier.position);
+    const link = this.add.graphics();
+
+    link.lineStyle(Math.max(4, Math.round(this.cellSize * 0.075)), SERVICE_COLORS[supplier.service], 0.58);
+    link.lineBetween(start.x, start.y, end.x, end.y);
+    link.lineStyle(1, 0x30474a, 0.72);
+    link.lineBetween(start.x, start.y, end.x, end.y);
+  }
+
+  private renderMissingRequirementSlash(centerX: number, centerY: number, symbolSize: number): void {
+    const slash = this.add.graphics();
+    const offset = symbolSize * 0.95;
+
+    slash.lineStyle(Math.max(4, Math.round(this.cellSize * 0.075)), 0xb33e3c, 0.92);
+    slash.lineBetween(centerX - offset, centerY + offset, centerX + offset, centerY - offset);
+    slash.lineStyle(1, 0xf9f5e9, 0.8);
+    slash.lineBetween(centerX - offset, centerY + offset, centerX + offset, centerY - offset);
   }
 
   private renderDistrictResourceDots(placements: readonly ServicePlacement[]): void {
@@ -483,10 +504,13 @@ export class JigsawScene extends Phaser.Scene {
       } else {
         this.commit([...this.placements, candidate]);
         const remainingFarms = unsuppliedFarms(this.placements).length;
+        const inactiveFactoryCount = inactiveFactories(this.placements).length;
         this.status = isLevelComplete(this.level, this.placements)
           ? "Town plan approved."
-          : this.placements.length === totalInventory(this.level.inventory) && remainingFarms > 0
+          : this.placements.length === totalInventory(this.level.quotas) && remainingFarms > 0
             ? `${remainingFarms} farm${remainingFarms === 1 ? "" : "s"} still need an adjacent dam.`
+            : this.placements.length === totalInventory(this.level.quotas) && inactiveFactoryCount > 0
+              ? `${inactiveFactoryCount} factor${inactiveFactoryCount === 1 ? "y" : "ies"} still need adjacent power and water.`
             : `${serviceLabel(candidate.service)} site placed.`;
 
         if (this.remaining(candidate.service) === 0) {
@@ -511,11 +535,16 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   private remaining(service: ServiceType): number {
-    return this.level.inventory[service] - this.placements.filter((placement) => placement.service === service).length;
+    return this.level.quotas[service].total - this.placements.filter((placement) => placement.service === service).length;
   }
 
   private cellOrigin(position: Position): { x: number; y: number } {
     return { x: this.boardLeft + position.column * this.cellSize, y: this.boardTop + position.row * this.cellSize };
+  }
+
+  private cellCenter(position: Position): { x: number; y: number } {
+    const { x, y } = this.cellOrigin(position);
+    return { x: x + this.cellSize / 2, y: y + this.cellSize / 2 };
   }
 
   private regionTopCorner(region: string): Position {
@@ -562,11 +591,13 @@ function positionKey(position: Position): string {
 function serviceLabel(service: ServiceType): string {
   switch (service) {
     case "generator":
-      return "Wind farm";
+      return "Solar panel";
     case "water":
       return "Dam";
     case "farm":
       return "Farm";
+    case "factory":
+      return "Factory";
   }
 }
 
@@ -578,34 +609,19 @@ function serviceCode(service: ServiceType): string {
       return "DAM";
     case "farm":
       return "FRM";
+    case "factory":
+      return "FAC";
   }
 }
 
-function resourceLabel(resource: ResourceType): string {
-  switch (resource) {
-    case "food":
-      return "food";
-    case "water":
-      return "water";
-    case "power":
-      return "power";
-  }
+function totalInventory(quotas: Readonly<Record<ServiceType, ServiceQuota>>): number {
+  return SERVICE_TYPES.reduce((total, service) => total + quotas[service].total, 0);
 }
 
-function formatList(values: readonly string[]): string {
-  if (values.length < 2) {
-    return values[0] ?? "the required resources";
-  }
-
-  if (values.length === 2) {
-    return `${values[0]} and ${values[1]}`;
-  }
-
-  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
-}
-
-function totalInventory(inventory: Readonly<Record<ServiceType, number>>): number {
-  return SERVICE_TYPES.reduce((total, service) => total + inventory[service], 0);
+function quotaInstruction(quota: ServiceQuota, size: number): string {
+  return quota.total === size && quota.maxPerRow === 1 && quota.maxPerColumn === 1 && quota.maxPerRegion === 1
+    ? "Place one in every row, column, and district."
+    : `Place ${quota.total} in separate rows, columns, and districts.`;
 }
 
 function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): string {
@@ -623,8 +639,10 @@ function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): 
     case "region-conflict":
       return "That district already has this service.";
     case "generator-water-conflict":
-      return "Wind farms and dams cannot be orthogonally adjacent.";
+      return "Solar panels and dams cannot be orthogonally adjacent.";
     case "farm-dam-missing":
       return "Farms must be orthogonally adjacent to a dam.";
+    case "factory-steel-demand-missing":
+      return "Factories may only be built in districts that need steel.";
   }
 }

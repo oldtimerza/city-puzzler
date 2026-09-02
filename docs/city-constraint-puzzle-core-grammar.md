@@ -4,7 +4,7 @@
 
 This is the canonical ruleset for Town Planner. It describes the current 5x5, 6x6, and 8x8 puzzle grammar, plus the intended extension model for future building types and relationships.
 
-The implementation keeps the internal service identifiers `generator`, `water`, and `farm`; player-facing names are Wind Farm, Dam, and Farm.
+The implementation keeps the internal service identifiers `generator`, `water`, and `farm`; player-facing names are Solar Panel, Dam, and Farm.
 
 ## Board And Districts
 
@@ -33,9 +33,10 @@ union(Di) = G
 ## Buildings
 
 ```text
-W = Wind Farm
+W = Solar Panel
 D = Dam
 F = Farm
+X = Factory
 ```
 
 Let `X[r,c,b]` be `1` when building `b` occupies cell `(r,c)`, otherwise `0`.
@@ -45,7 +46,7 @@ Let `X[r,c,b]` be `1` when building `b` occupies cell `(r,c)`, otherwise `0`.
 Each cell may contain zero or one building:
 
 ```text
-sum(X[r,c,b] for b in { W, D, F }) <= 1
+sum(X[r,c,b] for b in { W, D, F, X }) <= 1
 ```
 
 Empty cells are allowed.
@@ -56,13 +57,15 @@ A level profile selects its active buildings. Quotas and relationships apply onl
 
 ```text
 Irrigation:    Dam, Farm
-Crosswinds:    Wind Farm, Dam
-Standard:      Wind Farm, Dam, Farm
+Solar Fields:  Solar Panel, Dam
+Standard:      Solar Panel, Dam, Farm
+Foundry:       Solar Panel, Dam, Factory
+Free play:     Solar Panel, Dam, Farm, Factory (one to `N` Factories)
 ```
 
-The full Standard profile is supported on 6x6 and 8x8 boards. The 5x5 tutorial boards use the two-building Irrigation and Crosswinds profiles.
+The full Standard profile is supported on 6x6 and 8x8 boards. The 5x5 tutorial boards use the two-building Irrigation and Solar Fields profiles.
 
-Every active building type appears exactly once in every row, column, and district.
+By default, every active building type appears exactly once in every row, column, and district.
 
 For each active building `b`:
 
@@ -74,6 +77,8 @@ For every district Di: sum(X[r,c,b] for (r,c) in Di) = 1
 
 Therefore a completed board contains `N` instances of every active building.
 
+Levels may define quota exceptions. The Foundry campaign levels use a Factory quota of two or three total Factories, with at most one Factory in any row, column, or district. Steel-demand districts identify where those Factories may be built.
+
 ## District Resources
 
 Buildings provide resources to the district containing them:
@@ -81,10 +86,11 @@ Buildings provide resources to the district containing them:
 ```text
 Farm       -> 1 Food
 Dam        -> 1 Water
-Wind Farm  -> 1 Power
+Solar Panel -> 1 Power
+Factory    -> 1 Steel when supplied
 ```
 
-Every current district requires one unit of every resource produced by that level's active buildings. Unmet requirements appear as colored dots at the district's upper corner: green for Food, blue for Water, and gold for Power. A dot disappears when its requirement is supplied.
+Standard districts require one unit of every active non-Factory resource. Foundry levels add Steel requirements only to selected industrial districts. Unmet requirements appear as colored dots at the district's upper corner: green for Food, blue for Water, gold for Power, and red for Steel. A dot disappears when its requirement is supplied.
 
 The existing one-per-district placement rule makes these initial requirements equivalent to the current building profile. Resource requirements are explicit level data so future districts can request different combinations and quantities.
 
@@ -100,9 +106,9 @@ Only edge-sharing cells are adjacent. Diagonal cells are not adjacent.
 
 ## Relationship Constraints
 
-### Wind Farm And Dam Exclusion
+### Solar Panel And Dam Exclusion
 
-A Wind Farm may not be orthogonally adjacent to a Dam:
+A Solar Panel may not be orthogonally adjacent to a Dam:
 
 ```text
 W not-adjacent D
@@ -131,15 +137,28 @@ X[x,F] = 1 implies sum(X[y,D] for y in N4(x)) >= 1
 
 This relationship is asymmetric. A Dam does not require an adjacent Farm.
 
-There is no direct Wind Farm-Farm relationship.
+There is no direct Solar Panel-Farm relationship.
+
+### Factory Conversion
+
+A Factory supplies Steel to its own district only when it is orthogonally adjacent to both a Solar Panel and a Dam:
+
+```text
+X requires-adjacent W
+X requires-adjacent D
+X -> Steel
+```
+
+Factory inputs are enabling in the current implementation: Power and Water remain available to meet their districts' requirements. Resource capacity, transport, and consumption are future extensions.
 
 ## Move Legality
 
 The game validates constraints while the player is placing buildings, not only at completion.
 
-- A Wind Farm is illegal beside an existing Dam.
-- A Dam is illegal beside an existing Wind Farm.
+- A Solar Panel is illegal beside an existing Dam.
+- A Dam is illegal beside an existing Solar Panel.
 - A Farm is legal only when it is orthogonally adjacent to an already placed Dam.
+- A Factory is legal only in a district with a Steel requirement. It may be placed before its Power and Water inputs are present, but does not produce Steel until both are adjacent.
 - Row, column, district, cell-occupancy, and inventory constraints are also checked immediately.
 
 The legal-cell highlight shows only placements that satisfy all current move-legality rules.
@@ -158,6 +177,7 @@ BUILDINGS
     WIND_FARM
     DAM
     FARM
+    FACTORY
 
 CELL
     MAX_OCCUPANCY 1
@@ -172,6 +192,12 @@ RELATION
 
 RELATION
     WIND_FARM FORBIDS_ORTHOGONAL DAM
+
+RELATION
+    FACTORY REQUIRES_ORTHOGONAL WIND_FARM
+
+RELATION
+    FACTORY REQUIRES_ORTHOGONAL DAM
 ```
 
 ## Valid Solution
@@ -179,12 +205,13 @@ RELATION
 A board state is solved only when all of the following are true:
 
 1. Every cell has at most one building.
-2. Every row has one Wind Farm, one Dam, and one Farm.
-3. Every column has one Wind Farm, one Dam, and one Farm.
-4. Every district has one Wind Farm, one Dam, and one Farm.
-5. No Wind Farm is orthogonally adjacent to a Dam.
+2. Every row has one Solar Panel, one Dam, and one Farm.
+3. Every column has one Solar Panel, one Dam, and one Farm.
+4. Every district has one Solar Panel, one Dam, and one Farm.
+5. No Solar Panel is orthogonally adjacent to a Dam.
 6. Every Farm is orthogonally adjacent to a Dam.
 7. Every district's resource requirements are supplied by buildings in that district.
+8. Every Factory needed for Steel production touches both a Solar Panel and a Dam.
 
 ## Extension Model
 
@@ -217,7 +244,7 @@ These predicates are design vocabulary only until they are explicitly implemente
 
 ## Generation And Uniqueness
 
-Practice generation builds a connected district topology, constructs one complete valid solution, and verifies that solution against the rules above. It does not currently prove that a Practice board has a unique solution.
+Free play generation builds a connected district topology, constructs one complete valid solution, and verifies that solution against the rules above. It does not currently prove that a Free play board has a unique solution.
 
 Campaign levels have fixed clues. Their clue sets are accepted only when the solver finds exactly one solution.
 

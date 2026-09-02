@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. The unique solver, immutable clues, first three campaign levels, campaign picker, and local progression persistence are implemented. Solver-derived non-spoiler hints remain.
+In progress. The unique solver, immutable clues, Practice lesson picker, rule cards, and local progression persistence are implemented. Solver-derived non-spoiler hints remain.
 
 ## Goal
 
@@ -13,14 +13,14 @@ Turn the current open practice board into a sequence of fair, uniquely solvable 
 The first campaign teaches one rule family at a time.
 
 1. **Irrigation**: a 5x5 board with Dams and Farms. It teaches row, column, and district quotas plus Farm-Dam irrigation. Include fixed Dam clues and explicitly instruct the player to place Dams before Farms.
-2. **Crosswinds**: a 5x5 board with Wind Farms, Dams, and Farms. It introduces the Wind Farm-Dam exclusion rule with generous starting clues.
+2. **Solar Fields**: a 5x5 board with Solar Panels and Dams. It introduces the Solar Panel-Dam exclusion rule with generous starting clues.
 3. **Regional Plan**: a 6x6 board with all three building types, fewer clues, and more irregular district shapes. This is the first standard-difficulty level.
 
 Later campaign levels should add varied 6x6 and 8x8 district maps before adding another building type.
 
 ## Level Model
 
-Define an authored campaign level separately from the procedural practice-level generator:
+Define an authored Practice lesson separately from the procedural Free play generator:
 
 ```ts
 interface CampaignLevel {
@@ -42,7 +42,7 @@ interface CampaignLevel {
 - Reset restores the clue state instead of an empty board.
 - Completion checks only active services and their active relationships.
 
-The existing procedural generator remains a separate Practice mode while it only validates one known solution.
+The existing procedural generator remains a separate Free play mode while it only validates one known solution.
 
 ## Solver And Uniqueness
 
@@ -50,7 +50,7 @@ Implement a pure TypeScript solver that accepts board size, active services, dis
 
 - Search until it finds zero, one, or two solutions, then stop.
 - Treat clue placements as fixed.
-- Respect row, column, district, occupancy, Wind Farm-Dam, and Farm-Dam constraints throughout the search.
+- Respect row, column, district, occupancy, Solar Panel-Dam, and Farm-Dam constraints throughout the search.
 - Accept campaign levels only when the solver finds exactly one solution.
 - Preserve witnesses for zero-solution and multi-solution diagnostics.
 
@@ -63,17 +63,17 @@ Campaign support extends the current practice grammar in two ways:
 - Add curated 5x5 boards with five connected districts of five cells.
 - Support partial building profiles, beginning with the Dam-Farm profile used by Irrigation.
 
-Use authored 5x5 district maps for the first campaign. General-purpose 5x5 procedural topology generation is deferred until Practice mode needs it.
+Use authored 5x5 district maps for the first tutorial. General-purpose 5x5 procedural topology generation is deferred until Free play needs it.
 
-When profile-based campaign levels are implemented, update the canonical grammar so that quotas and relationships apply to a level's active services. The current full Wind Farm-Dam-Farm profile remains the standard profile.
+When profile-based campaign levels are implemented, update the canonical grammar so that quotas and relationships apply to a level's active services. The current full Solar Panel-Dam-Farm profile remains the standard profile.
 
 ## Campaign UI And Persistence
 
-Change `New game` into a campaign level picker:
+Use `Practice` as the lesson level picker:
 
 - Show unlocked level cards with title, board size, active-building icons, and a short rule summary.
 - Show locked cards with their preceding completion requirement.
-- Offer the current random board-size flow as Practice mode.
+- Offer the random board-size flow as `New game` Free play.
 - Show `Next level` and `Replay` after completion.
 - Persist completed level IDs and unlock state in `localStorage` under a versioned key such as `town-planner.campaign.v1`.
 
@@ -89,4 +89,4 @@ Change `New game` into a campaign level picker:
 
 ## Exit Criteria
 
-Players can complete Irrigation, Crosswinds, and Regional Plan in order. Each level has a unique solution, teaches its advertised rule, preserves progression across refreshes, and provides a useful non-spoiler hint.
+Players can complete Irrigation, Solar Fields, and Regional Plan in order. Each level has a unique solution, teaches its advertised rule, preserves progression across refreshes, and provides a useful non-spoiler hint.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION } from "../../src/content/jigsaw-starter-level.js";
 import { BOARD_SIZES, generateJigsawLevel } from "../../src/jigsaw/generator.js";
-import { isFarmSupplied, isLevelComplete, legalPositions, regionAt, resourceSupplyForRegion, unmetResourcesForRegion, unsuppliedFarms, validateLevel, validatePlacement, validatePlacements } from "../../src/jigsaw/rules.js";
+import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, legalPositions, regionAt, resourceSupplyForRegion, supplyingDam, unmetResourcesForRegion, unsuppliedFarms, validateLevel, validatePlacement, validatePlacements } from "../../src/jigsaw/rules.js";
 import type { JigsawLevel, ServicePlacement } from "../../src/jigsaw/types.js";
 
 describe("Jigsaw service rules", () => {
@@ -12,13 +12,24 @@ describe("Jigsaw service rules", () => {
       generateJigsawLevel(index + 101, 5, ["water", "farm"]),
       generateJigsawLevel(index + 201, 5, ["generator", "water"]),
     ]).flat();
-    const generated = [...fullProfileBoards, ...tutorialProfileBoards];
+    const factoryCountBoards = BOARD_SIZES.filter((size) => size !== 5).flatMap((size) =>
+      Array.from({ length: size }, (_, index) => {
+        const total = index + 1;
+        return generateJigsawLevel(index + 401 + size * 10, size, undefined, {
+          factory: { total, maxPerRow: 1, maxPerColumn: 1, maxPerRegion: 1 },
+        });
+      }),
+    );
+    const generated = [...fullProfileBoards, ...tutorialProfileBoards, ...factoryCountBoards];
 
     expect(generated.every(({ level }) => validateLevel(level).length === 0)).toBe(true);
     expect(generated.every(({ level, solution }) => isLevelComplete(level, solution))).toBe(true);
     expect(generated.every(({ level }) => countStraightRegions(level.regions) === 0)).toBe(true);
     expect(generated.every(({ level }) => countSimpleLRegions(level.regions) === 0)).toBe(true);
     expect(new Set(generated.map(({ level }) => JSON.stringify(level.regions))).size).toBeGreaterThan(5);
+    expect(fullProfileBoards.every(({ level }) => level.activeServices.includes("factory") && level.quotas.factory.total === 4)).toBe(true);
+    expect(fullProfileBoards.every(({ level }) => Object.values(level.regionRequirements).reduce((total, requirements) => total + (requirements.steel ?? 0), 0) === 4)).toBe(true);
+    expect(factoryCountBoards.every(({ level, solution }) => level.quotas.factory.total === solution.filter((placement) => placement.service === "factory").length)).toBe(true);
   });
 
   it("accepts the hand-authored irregular region map", () => {
@@ -66,6 +77,7 @@ describe("Jigsaw service rules", () => {
     expect(isFarmSupplied([farm], farm)).toBe(false);
     expect(unsuppliedFarms([farm])).toEqual([farm]);
     expect(isFarmSupplied([farm, water], farm)).toBe(true);
+    expect(supplyingDam([farm, water], farm)).toBe(water);
     expect(unsuppliedFarms([farm, water])).toEqual([]);
   });
 
@@ -80,7 +92,7 @@ describe("Jigsaw service rules", () => {
     const region = JIGSAW_STARTER_LEVEL.regions[0]![0]!;
     const supply = resourceSupplyForRegion(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION, region);
 
-    expect(supply).toEqual({ food: 1, water: 1, power: 1 });
+    expect(supply).toEqual({ food: 1, water: 1, power: 1, steel: 0 });
     expect(unmetResourcesForRegion(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION, region)).toEqual([]);
     expect(unmetResourcesForRegion(JIGSAW_STARTER_LEVEL, [], region)).toEqual(["food", "water", "power"]);
 
@@ -97,6 +109,32 @@ describe("Jigsaw service rules", () => {
     expect(isLevelComplete(extraFoodRequired, JIGSAW_STARTER_SOLUTION)).toBe(false);
 
     expect(validateLevel({ ...JIGSAW_STARTER_LEVEL, regionRequirements: {} })).toContain("invalid-region-requirements");
+  });
+
+  it("activates Factory Steel production from adjacent Power and Water", () => {
+    const factoryLevel = generateJigsawLevel(
+      601,
+      6,
+      ["water", "generator", "factory"],
+      { factory: { total: 2, maxPerRow: 1, maxPerColumn: 1, maxPerRegion: 1 } },
+      ["A", "D"],
+    );
+    const factory = factoryLevel.solution.find((placement) => placement.service === "factory")!;
+    const adjacentWater = factoryLevel.solution.find(
+      (placement) => placement.service === "water" && Math.abs(placement.position.row - factory.position.row) + Math.abs(placement.position.column - factory.position.column) === 1,
+    )!;
+    const factoryRegion = regionAt(factoryLevel.level, factory.position);
+    const nonIndustrialRegion = [...new Set(factoryLevel.level.regions.flat())].find((region) => region !== "A" && region !== "D")!;
+    const nonIndustrialCell = firstPositionInRegion(factoryLevel.level, nonIndustrialRegion);
+
+    expect(factoryLevel.level.quotas.factory.total).toBe(2);
+    expect(factoryLevel.solution.filter((placement) => placement.service === "factory")).toHaveLength(2);
+    expect(factoryLevel.solution.filter((placement) => placement.service === "factory").every((placement) => isFactorySupplied(factoryLevel.solution, placement))).toBe(true);
+    expect(factorySuppliers(factoryLevel.solution, factory).water).toBe(adjacentWater);
+    expect(factorySuppliers(factoryLevel.solution, factory).power).not.toBeNull();
+    expect(resourceSupplyForRegion(factoryLevel.level, factoryLevel.solution, factoryRegion).steel).toBe(1);
+    expect(inactiveFactories(factoryLevel.solution.filter((placement) => placement !== adjacentWater))).toContain(factory);
+    expect(validatePlacement(factoryLevel.level, [], { service: "factory", position: nonIndustrialCell, orientation: "east" })).toContain("factory-steel-demand-missing");
   });
 });
 
@@ -129,4 +167,16 @@ function firstRegionPeer(position: ServicePlacement["position"]): ServicePlaceme
   }
 
   throw new Error("Expected the starter region to have another cell.");
+}
+
+function firstPositionInRegion(level: JigsawLevel, region: string): ServicePlacement["position"] {
+  for (let row = 0; row < level.size; row += 1) {
+    for (let column = 0; column < level.size; column += 1) {
+      if (regionAt(level, { row, column }) === region) {
+        return { row, column };
+      }
+    }
+  }
+
+  throw new Error(`Expected a cell in district ${region}.`);
 }

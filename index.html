@@ -11,7 +11,7 @@
       <header class="masthead">
         <p class="eyebrow">Town Planner</p>
         <h1>Keep every district supplied.</h1>
-        <p class="intro">Balance wind power, water, and food across the whole town.</p>
+        <p class="intro">Balance solar power, water, and food across the whole town.</p>
       </header>
 
       <section id="start-menu" class="start-menu" role="dialog" aria-modal="true" aria-labelledby="start-menu-title">
@@ -21,20 +21,20 @@
           <p class="start-menu-intro">Build a balanced town plan, one service at a time.</p>
           <div id="start-menu-actions" class="start-menu-actions">
             <button id="new-game" class="menu-button primary" type="button">New game</button>
-            <button id="open-practice" class="menu-button" type="button">Practice</button>
+            <button id="open-practice" class="menu-button" type="button">Tutorial</button>
             <button id="open-help" class="menu-button" type="button" aria-expanded="false" aria-controls="help-panel">Help</button>
           </div>
 
           <section id="campaign-picker" class="campaign-picker" hidden aria-labelledby="campaign-picker-title">
-            <h3 id="campaign-picker-title">Town campaign</h3>
-            <p>Learn the rules one town plan at a time.</p>
+            <h3 id="campaign-picker-title">Practice lessons</h3>
+            <p>Learn one rule at a time, then combine them into a full town plan.</p>
             <div id="campaign-levels" class="campaign-levels"></div>
             <button id="back-from-campaign" class="menu-button close-campaign" type="button">Back</button>
           </section>
 
           <section id="size-picker" class="size-picker" hidden aria-labelledby="size-picker-title">
-            <h3 id="size-picker-title">Choose board size</h3>
-            <p>More districts and services create a deeper planning puzzle.</p>
+            <h3 id="size-picker-title">Free play board size</h3>
+            <p>Build a fresh town with all four building types, then choose how many Factory sites to manage.</p>
             <div class="board-size-choices" role="group" aria-label="Board size">
               <button class="size-choice selected" type="button" data-board-size="6" aria-pressed="true">
                 <strong>6x6</strong>
@@ -45,8 +45,25 @@
                 <span>Expert</span>
               </button>
             </div>
+            <div class="factory-picker">
+              <div class="factory-picker-heading">
+                <h3>Factory sites</h3>
+                <span id="factory-difficulty">4 Factories · Standard</span>
+              </div>
+              <p class="factory-picker-note">More Factories mean more Steel districts, tighter row, column, and district choices, and more supplier links to plan.</p>
+              <div class="factory-count-choices" role="group" aria-label="Number of Factory sites">
+                <button class="factory-count-choice" type="button" data-factory-count="1" aria-pressed="false">1</button>
+                <button class="factory-count-choice" type="button" data-factory-count="2" aria-pressed="false">2</button>
+                <button class="factory-count-choice" type="button" data-factory-count="3" aria-pressed="false">3</button>
+                <button class="factory-count-choice selected" type="button" data-factory-count="4" aria-pressed="true">4</button>
+                <button class="factory-count-choice" type="button" data-factory-count="5" aria-pressed="false">5</button>
+                <button class="factory-count-choice" type="button" data-factory-count="6" aria-pressed="false">6</button>
+                <button class="factory-count-choice" type="button" data-factory-count="7" aria-pressed="false">7</button>
+                <button class="factory-count-choice" type="button" data-factory-count="8" aria-pressed="false">8</button>
+              </div>
+            </div>
             <div class="size-picker-actions">
-              <button id="start-size-game" class="menu-button primary" type="button">Start game</button>
+              <button id="start-size-game" class="menu-button primary" type="button">Start free play</button>
               <button id="back-to-start" class="menu-button" type="button">Back</button>
             </div>
           </section>
@@ -55,12 +72,12 @@
             <h3>Goal</h3>
             <p>Place every active building icon once in each row, column, and district so every district receives its required resources. Tutorial levels introduce the building types one rule at a time.</p>
             <h3>Rules</h3>
-            <p>Each service icon must appear once in every row, column, and district. A cell may contain only one service. Dots in a district's upper corner show resources it still needs: green for food, blue for water, and gold for power.</p>
+            <p>Each service icon must appear once in every row, column, and district unless a level says otherwise. A cell may contain only one service. Dots in a district's upper corner show resources it still needs: green for food, blue for water, gold for power, and red for steel.</p>
             <div class="help-service-guide" aria-label="Service restrictions">
               <article class="help-service-rule">
                 <span class="service-icon power" aria-hidden="true"></span>
                 <div>
-                  <strong>Wind farm</strong>
+                  <strong>Solar panel</strong>
                   <p>Cannot touch a dam orthogonally.</p>
                 </div>
               </article>
@@ -68,7 +85,7 @@
                 <span class="service-icon pump" aria-hidden="true"></span>
                 <div>
                   <strong>Dam</strong>
-                  <p>Cannot touch a wind farm. It irrigates nearby farms.</p>
+                  <p>Cannot touch a solar panel. It irrigates nearby farms.</p>
                 </div>
               </article>
               <article class="help-service-rule">
@@ -76,6 +93,13 @@
                 <div>
                   <strong>Farm</strong>
                   <p>Must touch a dam orthogonally before the plan is complete.</p>
+                </div>
+              </article>
+              <article class="help-service-rule">
+                <span class="service-icon factory" aria-hidden="true"></span>
+                <div>
+                  <strong>Factory</strong>
+                  <p>Makes steel when it touches both a Solar Panel and a Dam.</p>
                 </div>
               </article>
             </div>
@@ -86,16 +110,29 @@
         </div>
       </section>
 
+      <section id="level-tip" class="level-tip" role="dialog" aria-modal="true" aria-labelledby="level-tip-title" hidden>
+        <div class="level-tip-card">
+          <p id="level-tip-step" class="eyebrow">Practice lesson</p>
+          <h2 id="level-tip-title"></h2>
+          <p id="level-tip-copy"></p>
+          <button id="dismiss-level-tip" class="menu-button primary" type="button">Start planning</button>
+        </div>
+      </section>
+
       <section class="game-layout" aria-label="Town Planner puzzle">
         <div id="game" aria-label="Town planning board"></div>
 
         <aside class="controls" aria-label="Puzzle controls">
-          <section>
+          <section class="inventory-section">
             <div class="section-heading">
               <h2>Inventory</h2>
               <span id="inventory-count">0 / 18 placed</span>
             </div>
             <div id="inventory" class="inventory"></div>
+            <div id="completion-notice" class="completion-notice" role="status" aria-live="polite" hidden>
+              <strong>Town plan approved</strong>
+              <span>Every district has its required resources.</span>
+            </div>
           </section>
 
           <section class="control-section">
@@ -108,7 +145,7 @@
 
           <section class="control-section utility-controls" aria-label="Board actions">
             <button id="main-menu" class="control-button levels" type="button">Main menu</button>
-            <button id="levels" class="control-button levels" type="button">Levels</button>
+            <button id="levels" class="control-button levels" type="button">Practice lessons</button>
             <button id="refresh" class="control-button refresh" type="button">Refresh puzzle</button>
             <button id="undo" class="control-button" type="button">Undo</button>
              <button id="redo" class="control-button" type="button">Redo</button>
@@ -119,7 +156,7 @@
           </section>
 
           <p id="status" class="status" aria-live="polite">Select a town service, then choose a district cell.</p>
-          <p class="legend"><span class="generator">o</span> wind farm <span class="water">◇</span> dam <span class="farm">△</span> farm</p>
+          <p class="legend"><span class="generator">o</span> solar panel <span class="water">◇</span> dam <span class="farm">△</span> farm <span class="factory">■</span> factory</p>
         </aside>
       </section>
     </main>

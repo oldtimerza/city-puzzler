@@ -15,10 +15,10 @@ The canonical current rules are in [City Constraint Puzzle: Core Grammar](../cit
 ## Core premise
 
 - An `N x N` board, where `N` is 6 or 8, is divided into `N` contiguous, irregular districts.
-- The player places Wind Farms, Dams, and Farms.
-- Each service type appears exactly once in every row, column, and region.
-- A cell may hold only one service. With three services, an `N x N` board has `N * N - 3 * N` empty cells.
-- Farms require orthogonally adjacent Dams, while Wind Farms may not be orthogonally adjacent to Dams.
+- The player places Solar Panels, Dams, Farms, and Factory sites.
+- Solar Panels, Dams, and Farms appear exactly once in every row, column, and region. Factory campaign levels use smaller total quotas with at most one Factory in a row, column, or region.
+- A cell may hold only one service.
+- Farms require orthogonally adjacent Dams, while Solar Panels may not be orthogonally adjacent to Dams.
 - A level is complete when every required service placement is legal. Future content must also prove uniqueness.
 
 This is a partial Jigsaw Sudoku: services are the symbols, and irregular town districts are the regions. The town theme becomes mechanically meaningful in later phases through homes, service coverage, population, and expansion.
@@ -29,7 +29,7 @@ This is a partial Jigsaw Sudoku: services are the symbols, and irregular town di
 | --- | --- | --- |
 | 1. Rules foundation | Complete | Rules, validation, immediate Farm-Dam placement legality, canonical grammar, and automated tests. |
 | 2. Playable slice | Complete | Responsive Phaser gameplay, hints, practice boards, and Town Planner visual styling. |
-| 3. Solver and campaign foundation | In progress | Unique solver, immutable clues, the first three campaign levels, and persistence are implemented; solver-derived non-spoiler hints remain. |
+| 3. Solver and campaign foundation | In progress | Unique solver, immutable clues, six Practice lessons, Factory quota exceptions, local Steel conversion, and lesson rule cards are implemented; solver-derived non-spoiler hints remain. |
 | 4. Level library and difficulty | Not started | Begins after the first uniquely solvable campaign levels exist. |
 | 5. Population and coverage | Not started | Deferred. |
 | 6. City expansion campaign | Not started | Deferred. |
@@ -47,7 +47,7 @@ This is a partial Jigsaw Sudoku: services are the symbols, and irregular town di
 
 ## First delivery target
 
-Phases 1 through 3 form the first playable milestone: generated 6x6 and 8x8 boards with irregular districts, three service types, conflict feedback, hints, undo, tests, and a known valid solution.
+Phases 1 through 3 form the first playable milestone: generated 6x6 and 8x8 boards with irregular districts, quota-aware service types, conflict feedback, hints, undo, tests, and a known valid solution.
 
 ## Deferred scope
 

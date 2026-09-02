@@ -11,6 +11,7 @@ const PROGRESS_KEY = "town-planner.campaign.v1";
 
 const inventory = byId<HTMLDivElement>("inventory");
 const inventoryCount = byId<HTMLSpanElement>("inventory-count");
+const completionNotice = byId<HTMLDivElement>("completion-notice");
 const buildingOrientation = byId<HTMLSpanElement>("building-orientation");
 const rotate = byId<HTMLButtonElement>("rotate");
 const refresh = byId<HTMLButtonElement>("refresh");
@@ -36,12 +37,20 @@ const backFromCampaign = byId<HTMLButtonElement>("back-from-campaign");
 const sizePicker = byId<HTMLElement>("size-picker");
 const startSizeGame = byId<HTMLButtonElement>("start-size-game");
 const backToStart = byId<HTMLButtonElement>("back-to-start");
+const levelTip = byId<HTMLElement>("level-tip");
+const levelTipStep = byId<HTMLParagraphElement>("level-tip-step");
+const levelTipTitle = byId<HTMLHeadingElement>("level-tip-title");
+const levelTipCopy = byId<HTMLParagraphElement>("level-tip-copy");
+const dismissLevelTip = byId<HTMLButtonElement>("dismiss-level-tip");
 const boardSizeChoices = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-board-size]"));
+const factoryCountChoices = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-factory-count]"));
+const factoryDifficulty = byId<HTMLSpanElement>("factory-difficulty");
 
 const inventoryButtons = new Map<ServiceType, HTMLButtonElement>();
 const completedLevelIds = loadCompletedLevelIds();
 let nextSeed = Date.now() >>> 0;
 let selectedBoardSize: BoardSize = 6;
+let selectedFactoryCount = 4;
 let activeCampaignIndex: number | null = null;
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -80,16 +89,21 @@ redo.addEventListener("click", () => scene().redo());
 hint.addEventListener("click", () => scene().showHint());
 showSolution.addEventListener("click", () => scene().revealSolution());
 reset.addEventListener("click", () => scene().reset());
-newGame.addEventListener("click", showCampaignPicker);
-openPractice.addEventListener("click", showBoardSizePicker);
+newGame.addEventListener("click", showBoardSizePicker);
+openPractice.addEventListener("click", showCampaignPicker);
 openHelp.addEventListener("click", openHelpPanel);
 closeHelp.addEventListener("click", closeHelpPanel);
 backFromCampaign.addEventListener("click", showStartActions);
-startSizeGame.addEventListener("click", startPracticeGame);
+startSizeGame.addEventListener("click", startFreePlay);
 backToStart.addEventListener("click", showStartActions);
+dismissLevelTip.addEventListener("click", hideLevelTip);
 
 for (const choice of boardSizeChoices) {
   choice.addEventListener("click", () => selectBoardSize(Number(choice.dataset.boardSize)));
+}
+
+for (const choice of factoryCountChoices) {
+  choice.addEventListener("click", () => selectFactoryCount(Number(choice.dataset.factoryCount)));
 }
 
 renderCampaignLevels();
@@ -120,15 +134,16 @@ function renderControls(state: JigsawViewState): void {
     }
 
     const count = state.placements.filter((placement) => placement.service === service).length;
-    const total = state.inventory[service];
+    const total = state.quotas[service].total;
     placed += count;
     button.textContent = `${serviceLabel(service)}  ${count}/${total}`;
     button.disabled = count === total;
     button.classList.toggle("selected", state.selectedService === service);
   }
 
-  const totalServices = state.activeServices.reduce((total, service) => total + state.inventory[service], 0);
+  const totalServices = state.activeServices.reduce((total, service) => total + state.quotas[service].total, 0);
   inventoryCount.textContent = `${placed} / ${totalServices} placed`;
+  completionNotice.hidden = !state.complete;
   buildingOrientation.textContent = DIRECTION_LABELS[state.orientation];
   rotate.disabled = state.selectedService === null;
   rotate.textContent = state.selectedService ? `Rotate ${serviceLabel(state.selectedService)} (R)` : "Rotate service (R)";
@@ -157,7 +172,7 @@ function refreshPuzzle(size: BoardSize = scene().getBoardSize()): void {
 
   for (let attempt = 0; attempt < 32; attempt += 1) {
     nextSeed = (nextSeed + 1) >>> 0;
-    const generated = generateJigsawLevel(nextSeed, size);
+    const generated = generateFreePlayLevel(nextSeed, size);
 
     if (jigsawLevelSignature(generated) !== currentSignature) {
       scene().loadPuzzle(generated);
@@ -165,12 +180,13 @@ function refreshPuzzle(size: BoardSize = scene().getBoardSize()): void {
     }
   }
 
-  scene().loadPuzzle(generateJigsawLevel(nextSeed, size));
+  scene().loadPuzzle(generateFreePlayLevel(nextSeed, size));
 }
 
-function startPracticeGame(): void {
+function startFreePlay(): void {
   refreshPuzzle(selectedBoardSize);
   startMenu.hidden = true;
+  hideLevelTip();
 }
 
 function startCampaignLevel(index: number): void {
@@ -183,6 +199,7 @@ function startCampaignLevel(index: number): void {
   activeCampaignIndex = index;
   scene().loadPuzzle(level);
   startMenu.hidden = true;
+  showLevelTip(level, index);
 }
 
 function startNextCampaignLevel(): void {
@@ -194,6 +211,7 @@ function startNextCampaignLevel(): void {
 }
 
 function showCampaignPicker(): void {
+  hideLevelTip();
   startMenu.hidden = false;
   startMenuActions.hidden = true;
   helpPanel.hidden = true;
@@ -204,10 +222,12 @@ function showCampaignPicker(): void {
 }
 
 function showBoardSizePicker(): void {
+  hideLevelTip();
   startMenuActions.hidden = true;
   helpPanel.hidden = true;
   campaignPicker.hidden = true;
   sizePicker.hidden = false;
+  renderFactoryCountChoices();
   boardSizeChoices.find((choice) => Number(choice.dataset.boardSize) === selectedBoardSize)?.focus();
 }
 
@@ -220,8 +240,21 @@ function showStartActions(): void {
 }
 
 function showMainMenu(): void {
+  hideLevelTip();
   startMenu.hidden = false;
   showStartActions();
+}
+
+function showLevelTip(level: CampaignLevel, index: number): void {
+  levelTipStep.textContent = `Practice lesson ${index + 1} of ${CAMPAIGN_LEVELS.length}`;
+  levelTipTitle.textContent = level.title;
+  levelTipCopy.textContent = level.tutorialTip;
+  levelTip.hidden = false;
+  dismissLevelTip.focus();
+}
+
+function hideLevelTip(): void {
+  levelTip.hidden = true;
 }
 
 function selectBoardSize(size: number): void {
@@ -231,12 +264,63 @@ function selectBoardSize(size: number): void {
 
   selectedBoardSize = size as BoardSize;
 
+  if (selectedFactoryCount > maximumFactoryCount(selectedBoardSize)) {
+    selectedFactoryCount = maximumFactoryCount(selectedBoardSize);
+  }
+
   for (const choice of boardSizeChoices) {
     const selected = Number(choice.dataset.boardSize) === selectedBoardSize;
     choice.classList.toggle("selected", selected);
     choice.setAttribute("aria-pressed", String(selected));
   }
 
+  renderFactoryCountChoices();
+
+}
+
+function selectFactoryCount(count: number): void {
+  if (!Number.isInteger(count) || count < 1 || count > maximumFactoryCount(selectedBoardSize)) {
+    return;
+  }
+
+  selectedFactoryCount = count;
+  renderFactoryCountChoices();
+}
+
+function renderFactoryCountChoices(): void {
+  for (const choice of factoryCountChoices) {
+    const count = Number(choice.dataset.factoryCount);
+    const available = count <= maximumFactoryCount(selectedBoardSize);
+    const selected = count === selectedFactoryCount;
+    choice.hidden = !available;
+    choice.classList.toggle("selected", selected);
+    choice.setAttribute("aria-pressed", String(selected));
+  }
+
+  factoryDifficulty.textContent = `${selectedFactoryCount} Factor${selectedFactoryCount === 1 ? "y" : "ies"} · ${factoryDifficultyLabel(selectedFactoryCount, selectedBoardSize)}`;
+}
+
+function generateFreePlayLevel(seed: number, size: BoardSize) {
+  return generateJigsawLevel(seed, size, SERVICE_TYPES, {
+    factory: { total: selectedFactoryCount, maxPerRow: 1, maxPerColumn: 1, maxPerRegion: 1 },
+  });
+}
+
+function factoryDifficultyLabel(factoryCount: number, size: BoardSize): string {
+  if (factoryCount >= maximumFactoryCount(size)) {
+    return "Expert";
+  }
+
+  if (factoryCount >= 5) {
+    return "Challenging";
+  }
+
+  return factoryCount === 4 ? "Standard" : "Light";
+
+}
+
+function maximumFactoryCount(size: BoardSize): number {
+  return size;
 }
 
 function renderCampaignLevels(): void {
@@ -328,11 +412,13 @@ function isTextInput(target: EventTarget | null): boolean {
 function serviceLabel(service: ServiceType): string {
   switch (service) {
     case "generator":
-      return "Wind farm";
+      return "Solar panel";
     case "water":
       return "Dam";
     case "farm":
       return "Farm";
+    case "factory":
+      return "Factory";
   }
 }
 

@@ -14,31 +14,21 @@ Turn population progress into a persistent city that grows on the same grid.
 
 ## Initial campaign path
 
-1. 6x6 hamlet: Wind Farms and Dams.
+1. 6x6 hamlet: Solar Panels and Dams.
 2. 6x6 service district: add Farms and varied district shapes.
 3. 7x7 town: reveal new rows, columns, and two additional regions.
 4. Larger districts: introduce more homes and more demanding service mixes.
 
-## Future Building: Factory
+## Factory Foundation
 
-Factories are a proposed post-core building type. They introduce industrial layout without requiring every building type to use the same row and column quotas.
+Implemented Factory lessons establish the first per-building quota exception and local resource conversion.
 
-- Place exactly one Factory in each district.
-- Factories do not require one placement in every row or column.
-- A Factory may be orthogonally adjacent to another Factory.
-- A Factory may not be orthogonally adjacent to a Wind Farm, Dam, or Farm; this restriction is symmetric when placing either building.
-- Factories are not required to touch another Factory in the first version. A mandatory industrial cluster is a possible later difficulty modifier.
-
-With `N` districts and `N` Factory placements, district uniqueness guarantees one Factory in every district while allowing industrial clusters to cross district borders.
-
-### Factory implementation requirements
-
-1. Add per-building quota profiles so Factory uses district uniqueness only while current buildings retain row, column, and district uniqueness.
-2. Add Factory icons, inventory, tutorial copy, and placement-feedback messages.
-3. Add symmetric Factory-to-non-Factory orthogonal exclusion to placement validation.
-4. Update generation to place Factories by unfilled district before solving the other services around their industrial buffer.
-5. Update the solver to select an unfilled district for Factory rather than an unfilled row, and require unique campaign solutions.
-6. Add unit tests for Factory quota, adjacency, generation, and solver behavior before adding campaign levels.
+- Foundry Basics requires two Factories; Steelworks requires three.
+- Each Factory has a total quota and may appear at most once in any row, column, or district.
+- Factories may only occupy districts that require Steel.
+- A Factory supplies Steel when it is orthogonally adjacent to both a Solar Panel and a Dam.
+- Power and Water enable Factory production without being consumed. Capacity and transport remain deferred.
+- Both Factory campaign levels are generated from valid layouts and accepted only when the clue set has a unique solution with all Factories player-placed.
 
 ## Deferred Zones And Map Features
 
@@ -58,7 +48,7 @@ Each new building should introduce one new reasoning dimension at a time: quota,
 | Mill | Must touch a forest node and cannot touch a Factory. | Combines resource placement with a known industrial conflict. |
 | Port | Must occupy a harbor or coast cell. | Uses terrain-restricted placement without adjacency dependencies. |
 | Warehouse | Must touch both a Factory and a road or station. | Creates two-part logistics dependencies. |
-| Transit Station | One per row and column, but not necessarily per district. | Inverts the Factory quota exception. |
+| Transit Station | One per row and column, but not necessarily per district. | Introduces a different quota exception. |
 | Park | Cannot touch a Factory and must be diagonally adjacent to a Farm. | Introduces diagonal relationships and buffer space. |
 | Water Tower | Must touch exactly one Dam. | Introduces exact-count adjacency rather than an at-least-one dependency. |
 | Fire Station | Must be within Manhattan distance two of every district marker or home node. | Adds late-game coverage and range reasoning. |
@@ -69,9 +59,10 @@ Each new building should introduce one new reasoning dimension at a time: quota,
 
 ## Quota Variants
 
-The current Wind Farm, Dam, and Farm rule is one placement per row, column, and district. Future profiles may use one of these deliberate exceptions:
+The current Solar Panel, Dam, and Farm rule is one placement per row, column, and district. Future profiles may use one of these deliberate exceptions:
 
-- District-only: Factory has one placement per district and no row or column quota.
+- Limited Factory: two or three total Factories, with at most one in each row, column, and district.
+- District-only Factory: a possible later industrial-zone profile with one placement per industrial district and no row or column quota.
 - Row-and-column-only: Transit Station has one placement per row and column and no district quota.
 - Global: Town Hall has exactly one placement on the entire board.
 - Multi-placement district quota: Apartments have two placements per district and no row or column quota.
@@ -79,7 +70,7 @@ The current Wind Farm, Dam, and Farm rule is one placement per row, column, and 
 
 ## Recommended Introduction Order
 
-1. Factory: establish per-building quotas and industrial buffers.
+1. Factory: implemented quota exceptions and local resource conversion.
 2. Mine and ore nodes: establish immutable map features.
 3. Park or Water Tower: introduce either diagonal relationships or exact-count adjacency.
 4. Warehouse and roads or stations: combine established terrain and adjacency rules.

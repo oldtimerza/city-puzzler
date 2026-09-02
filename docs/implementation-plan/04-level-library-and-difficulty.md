@@ -6,9 +6,9 @@ Establish that varied region shapes and familiar deductions can carry a set of l
 
 ## Content sequence
 
-1. Wind Farm-only: one Queens-like service layer.
-2. Wind Farm and Dam: two services compete for cells.
-3. Wind Farm, Dam, and Farm: the standard partial Jigsaw Sudoku rule set.
+1. Solar Panel-only: one Queens-like service layer.
+2. Solar Panel and Dam: two services compete for cells.
+3. Solar Panel, Dam, and Farm: the standard partial Jigsaw Sudoku rule set.
 4. Different region silhouettes: narrow corridors, corner-heavy districts, central districts, and asymmetric partitions.
 5. Optional starting clues only where needed to ensure a deduction-first solve.
 

@@ -15,7 +15,7 @@ Build a playable 6x6 level using the Phase 1 engine.
 ## Visual language
 
 - Distinct softly colored irregular regions with clear borders.
-- Geometric symbols for Wind Farms, Dams, and Farms.
+- Geometric symbols for Solar Panels, Dams, and Farms.
 - A selected service and its legal candidate cells are visible.
 - Conflicts identify the precise row, column, region, or occupied cell causing them.
 - Farms only highlight as legal beside an orthogonally adjacent Dam.
