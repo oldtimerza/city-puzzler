@@ -80,7 +80,6 @@ function nextPlacement(
       candidates: positions.map((position) => ({
         service,
         position,
-        orientation: "east" as const,
       })).filter((candidate) => validatePlacement(level, placements, candidate).length === 0),
     };
   }

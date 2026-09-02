@@ -6,7 +6,7 @@ export interface CampaignLevel extends JigsawPuzzle {
   readonly id: string;
   readonly boardSize: BoardSize;
   readonly activeServices: readonly ServiceType[];
-  readonly tutorialTip: string;
+  readonly tutorialTip?: string;
 }
 
 export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
@@ -35,8 +35,8 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
   createCampaignLevel({
     id: "regional-plan",
     title: "Regional Plan",
-    introduction: "Bring power, water, and food together across a larger town plan.",
-    tutorialTip: "This is the complete core town plan: every district needs Food, Water, and Power. Farms still need an adjacent Dam.",
+    introduction: "Bring power, water, and food together across a larger city plan.",
+    tutorialTip: "This is the complete core city plan: every district needs Food, Water, and Power. Farms still need an adjacent Dam.",
     seed: 501,
     size: 6,
     activeServices: ["water", "farm", "generator"],
@@ -47,7 +47,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     id: "foundry-basics",
     title: "Foundry Basics",
     introduction: "Factories make steel when they touch both a Solar Panel for power and a Dam for water.",
-    tutorialTip: "Red Steel dots mark industrial districts. Place two Factories there, each beside both a Solar Panel and a Dam.",
+    tutorialTip: "Each Factory must be in an industrial district marked by red Steel dots and beside both a Dam and a Solar Panel. Place two.",
     seed: 5,
     size: 6,
     activeServices: ["water", "generator", "factory"],
@@ -61,7 +61,6 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     id: "steelworks",
     title: "Steelworks",
     introduction: "Three industrial districts need steel. Keep each Factory in a separate row, column, and district.",
-    tutorialTip: "Three districts need Steel. Factories are a quota exception: place three total, with no repeated row, column, or district.",
     seed: 4,
     size: 6,
     activeServices: ["water", "generator", "factory"],
@@ -91,7 +90,7 @@ function createCampaignLevel(config: {
   readonly id: string;
   readonly title: string;
   readonly introduction: string;
-  readonly tutorialTip: string;
+  readonly tutorialTip?: string;
   readonly seed: number;
   readonly size: BoardSize;
   readonly activeServices: readonly ServiceType[];
@@ -113,7 +112,7 @@ function createCampaignLevel(config: {
     id: config.id,
     title: config.title,
     introduction: config.introduction,
-    tutorialTip: config.tutorialTip,
+    ...(config.tutorialTip ? { tutorialTip: config.tutorialTip } : {}),
     boardSize: config.size,
     activeServices: config.activeServices,
     level: generated.level,

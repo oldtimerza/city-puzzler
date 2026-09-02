@@ -1,6 +1,6 @@
-# Town Planner Implementation Plan
+# Miniopolis Implementation Plan
 
-This directory breaks Town Planner into independently deliverable phases. The core is a city-themed, partial Jigsaw Sudoku rather than a resource-field reconstruction puzzle. Complete each phase's exit criteria before expanding the scope.
+This directory breaks Miniopolis into independently deliverable phases. The core is a city-themed, partial Jigsaw Sudoku rather than a resource-field reconstruction puzzle. Complete each phase's exit criteria before expanding the scope.
 
 The canonical current rules are in [City Constraint Puzzle: Core Grammar](../city-constraint-puzzle-core-grammar.md).
 
@@ -28,7 +28,7 @@ This is a partial Jigsaw Sudoku: services are the symbols, and irregular town di
 | Phase | Status | Notes |
 | --- | --- | --- |
 | 1. Rules foundation | Complete | Rules, validation, immediate Farm-Dam placement legality, canonical grammar, and automated tests. |
-| 2. Playable slice | Complete | Responsive Phaser gameplay, hints, practice boards, and Town Planner visual styling. |
+| 2. Playable slice | Complete | Responsive Phaser gameplay, hints, Free play boards, and Miniopolis visual styling. |
 | 3. Solver and campaign foundation | In progress | Unique solver, immutable clues, six Practice lessons, Factory quota exceptions, local Steel conversion, and lesson rule cards are implemented; solver-derived non-spoiler hints remain. |
 | 4. Level library and difficulty | Not started | Begins after the first uniquely solvable campaign levels exist. |
 | 5. Population and coverage | Not started | Deferred. |

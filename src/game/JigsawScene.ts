@@ -1,11 +1,10 @@
 import Phaser from "phaser";
 
-import type { Direction, Position } from "../core/types.js";
+import type { Position } from "../core/types.js";
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
 import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, legalPositions, supplyingDam, unmetResourcesForRegion, unsuppliedFarms, validatePlacement } from "../jigsaw/rules.js";
 import { SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
-const DIRECTIONS: readonly Direction[] = ["north", "east", "south", "west"];
 const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
   generator: 0xe5ae35,
   water: 0x49a6c9,
@@ -24,7 +23,6 @@ export interface JigsawViewState {
   readonly selectedService: ServiceType | null;
   readonly activeServices: readonly ServiceType[];
   readonly placements: readonly ServicePlacement[];
-  readonly orientation: Direction;
   readonly quotas: Readonly<Record<ServiceType, ServiceQuota>>;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
@@ -42,12 +40,11 @@ export class JigsawScene extends Phaser.Scene {
   private future: ServicePlacement[][] = [];
   private selectedService: ServiceType | null = null;
   private puzzle: JigsawPuzzle = generateJigsawLevel(20260901);
-  private orientation: Direction = "east";
   private hoveredCell: Position | null = null;
   private hint: ServicePlacement | null = null;
   private showSolutionPreview = false;
   private solutionRevealed = false;
-  private status = "Select a town service, then choose a district cell.";
+  private status = "Select a building, then choose a district cell.";
   private boardLeft = 0;
   private boardTop = 0;
   private cellSize = 0;
@@ -68,34 +65,15 @@ export class JigsawScene extends Phaser.Scene {
     if (this.solutionRevealed) {
       this.status = "The solution has been revealed. Start a new practice board to play again.";
     } else if (this.remaining(service) === 0) {
-      this.status = `All ${serviceLabel(service).toLowerCase()} sites are already placed.`;
+      this.status = `No ${buildingLabel(service).toLowerCase()} buildings remain to place.`;
     } else if (this.selectedService === service) {
       this.selectedService = null;
       this.status = "Selection cleared.";
     } else {
       this.selectedService = service;
-      this.status = `${serviceLabel(service)} selected. ${quotaInstruction(this.level.quotas[service], this.level.size)}`;
+      this.status = `${buildingLabel(service)} selected. ${quotaInstruction(this.level.quotas[service], this.level.size)}`;
     }
 
-    this.renderBoard();
-    this.publishState();
-  }
-
-  rotateSelectedService(): void {
-    if (this.solutionRevealed) {
-      this.status = "The solution has been revealed. Start a new practice board to play again.";
-      this.publishState();
-      return;
-    }
-
-    if (!this.selectedService) {
-      this.status = "Select a service before rotating it.";
-      this.publishState();
-      return;
-    }
-
-    this.orientation = DIRECTIONS[(DIRECTIONS.indexOf(this.orientation) + 1) % DIRECTIONS.length]!;
-    this.status = `${serviceLabel(this.selectedService)} now faces ${this.orientation}.`;
     this.renderBoard();
     this.publishState();
   }
@@ -192,7 +170,7 @@ export class JigsawScene extends Phaser.Scene {
         (placement) => !this.placements.some((current) => samePosition(current.position, placement.position)) && validatePlacement(this.level, this.placements, placement).length === 0,
       ) ?? null;
       this.status = this.hint
-        ? `Hint: place a ${serviceLabel(this.hint.service).toLowerCase()} site in the highlighted cell.`
+        ? `Hint: place a ${buildingLabel(this.hint.service).toLowerCase()} building in the highlighted cell.`
         : "No compatible hint remains for this plan.";
     }
 
@@ -227,7 +205,6 @@ export class JigsawScene extends Phaser.Scene {
       selectedService: this.selectedService,
       activeServices: this.level.activeServices,
       placements: this.placements,
-      orientation: this.orientation,
       quotas: this.level.quotas,
       canUndo: this.history.length > 0,
       canRedo: this.future.length > 0,
@@ -248,7 +225,7 @@ export class JigsawScene extends Phaser.Scene {
     this.boardTop = Math.floor((this.scale.height - boardSize) / 2);
 
     const displayedPlacements = this.showSolutionPreview ? this.solution : this.placements;
-    const legalCells = this.selectedService && !this.showSolutionPreview ? new Set(legalPositions(this.level, this.placements, this.selectedService, this.orientation).map(positionKey)) : new Set<string>();
+    const legalCells = this.selectedService && !this.showSolutionPreview ? new Set(legalPositions(this.level, this.placements, this.selectedService).map(positionKey)) : new Set<string>();
 
     this.add
       .text(this.boardLeft, Math.max(9, this.boardTop - 25), this.showSolutionPreview ? "REFERENCE PLAN" : this.puzzle.title.toUpperCase(), {
@@ -363,7 +340,7 @@ export class JigsawScene extends Phaser.Scene {
 
     this.add.rectangle(centerX, centerY, this.cellSize - 12, this.cellSize - 12, color, 0.3).setStrokeStyle(3, 0xffffff, 0.9);
     this.add
-      .text(centerX, centerY, `HINT\n${serviceCode(placement.service)}`, {
+        .text(centerX, centerY, `HINT\n${buildingCode(placement.service)}`, {
         fontFamily: "system-ui, sans-serif",
         fontSize: `${Math.max(10, Math.round(this.cellSize * 0.14))}px`,
         fontStyle: "bold",
@@ -492,9 +469,9 @@ export class JigsawScene extends Phaser.Scene {
       this.status = "That starting clue is fixed.";
     } else if (existingIndex >= 0) {
       this.commit(this.placements.filter((_, index) => index !== existingIndex));
-      this.status = "Service site removed.";
+      this.status = "Building removed.";
     } else if (!this.selectedService) {
-      this.status = "Select a service before placing it.";
+      this.status = "Select a building before placing it.";
     } else {
       const candidate = this.createPlacement(position);
       const issues = validatePlacement(this.level, this.placements, candidate);
@@ -506,12 +483,12 @@ export class JigsawScene extends Phaser.Scene {
         const remainingFarms = unsuppliedFarms(this.placements).length;
         const inactiveFactoryCount = inactiveFactories(this.placements).length;
         this.status = isLevelComplete(this.level, this.placements)
-          ? "Town plan approved."
+          ? "City plan approved."
           : this.placements.length === totalInventory(this.level.quotas) && remainingFarms > 0
             ? `${remainingFarms} farm${remainingFarms === 1 ? "" : "s"} still need an adjacent dam.`
             : this.placements.length === totalInventory(this.level.quotas) && inactiveFactoryCount > 0
               ? `${inactiveFactoryCount} factor${inactiveFactoryCount === 1 ? "y" : "ies"} still need adjacent power and water.`
-            : `${serviceLabel(candidate.service)} site placed.`;
+            : `${buildingLabel(candidate.service)} building placed.`;
 
         if (this.remaining(candidate.service) === 0) {
           this.selectedService = null;
@@ -524,7 +501,7 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   private createPlacement(position: Position): ServicePlacement {
-    return { service: this.selectedService!, position, orientation: this.orientation };
+    return { service: this.selectedService!, position };
   }
 
   private commit(next: ServicePlacement[]): void {
@@ -588,7 +565,7 @@ function positionKey(position: Position): string {
   return `${position.row}:${position.column}`;
 }
 
-function serviceLabel(service: ServiceType): string {
+function buildingLabel(service: ServiceType): string {
   switch (service) {
     case "generator":
       return "Solar panel";
@@ -601,7 +578,7 @@ function serviceLabel(service: ServiceType): string {
   }
 }
 
-function serviceCode(service: ServiceType): string {
+function buildingCode(service: ServiceType): string {
   switch (service) {
     case "generator":
       return "WND";
@@ -629,15 +606,15 @@ function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): 
     case "out-of-bounds":
       return "That cell is outside the town plan.";
     case "occupied-cell":
-      return "Only one service may occupy a cell.";
+      return "Only one building may occupy a cell.";
     case "inventory-exhausted":
-      return "All sites of that service are already placed.";
+      return "No more of that building may be placed.";
     case "row-conflict":
-      return "That row already has this service.";
+      return "That row already has this building.";
     case "column-conflict":
-      return "That column already has this service.";
+      return "That column already has this building.";
     case "region-conflict":
-      return "That district already has this service.";
+      return "That district already has this building.";
     case "generator-water-conflict":
       return "Solar panels and dams cannot be orthogonally adjacent.";
     case "farm-dam-missing":

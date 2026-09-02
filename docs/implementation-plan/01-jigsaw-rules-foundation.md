@@ -1,4 +1,4 @@
-# Phase 1: Town Planner Rules Foundation
+# Phase 1: Miniopolis Rules Foundation
 
 ## Status
 

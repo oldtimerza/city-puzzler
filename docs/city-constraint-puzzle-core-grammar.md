@@ -2,7 +2,7 @@
 
 ## Status
 
-This is the canonical ruleset for Town Planner. It describes the current 5x5, 6x6, and 8x8 puzzle grammar, plus the intended extension model for future building types and relationships.
+This is the canonical ruleset for Miniopolis. It describes the current 5x5, 6x6, and 8x8 puzzle grammar, plus the intended extension model for future building types and relationships.
 
 The implementation keeps the internal service identifiers `generator`, `water`, and `farm`; player-facing names are Solar Panel, Dam, and Farm.
 

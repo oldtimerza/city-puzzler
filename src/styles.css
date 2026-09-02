@@ -490,9 +490,16 @@ button:disabled {
   background: #f0eee7;
 }
 
-.close-campaign {
-  width: 100%;
+.campaign-picker-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   margin-top: 18px;
+}
+
+.reset-tutorial-progress {
+  border-color: #bf8580;
+  color: #8b4948;
 }
 
 .size-picker h3,

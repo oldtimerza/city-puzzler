@@ -1,4 +1,4 @@
-import type { Direction, Position } from "../core/types.js";
+import type { Position } from "../core/types.js";
 
 export const SERVICE_TYPES = ["generator", "water", "farm", "factory"] as const;
 export const RESOURCE_TYPES = ["food", "water", "power", "steel"] as const;
@@ -25,7 +25,6 @@ export interface ServiceQuota {
 export interface ServicePlacement {
   readonly service: ServiceType;
   readonly position: Position;
-  readonly orientation: Direction;
 }
 
 export interface JigsawLevel {

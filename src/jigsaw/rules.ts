@@ -118,12 +118,12 @@ export function validatePlacements(level: JigsawLevel, placements: readonly Serv
   return placements.flatMap((placement, index) => validatePlacement(level, placements.slice(0, index), placement));
 }
 
-export function legalPositions(level: JigsawLevel, placements: readonly ServicePlacement[], service: ServiceType, orientation: ServicePlacement["orientation"]): Position[] {
+export function legalPositions(level: JigsawLevel, placements: readonly ServicePlacement[], service: ServiceType): Position[] {
   const positions: Position[] = [];
 
   for (let row = 0; row < level.size; row += 1) {
     for (let column = 0; column < level.size; column += 1) {
-      const candidate = { service, position: { row, column }, orientation };
+      const candidate = { service, position: { row, column } };
 
       if (validatePlacement(level, placements, candidate).length === 0) {
         positions.push(candidate.position);

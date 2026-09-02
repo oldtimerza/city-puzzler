@@ -1,6 +1,6 @@
-# Town Planner
+# Miniopolis
 
-Town Planner is a grid-based logic puzzle about balancing infrastructure across irregular town districts. It combines Jigsaw Sudoku-style row, column, and district quotas with spatial building relationships.
+Miniopolis is a grid-based city-planning logic puzzle about balancing infrastructure across irregular districts. It combines Jigsaw Sudoku-style row, column, and district quotas with spatial building relationships.
 
 ## How To Play
 
@@ -12,7 +12,7 @@ Each level uses a square board divided into connected, irregular districts.
 - Farms must be orthogonally adjacent to a Dam.
 - Factories produce Steel for their district when orthogonally adjacent to both a Solar Panel and a Dam.
 
-The campaign teaches these rules in sequence:
+The Tutorial teaches these rules in sequence:
 
 1. **Irrigation**: 5x5 Dams and Farms.
 2. **Solar Fields**: 5x5 Solar Panels and Dams.
@@ -21,7 +21,7 @@ The campaign teaches these rules in sequence:
 5. **Steelworks**: place three Factories under the same spatial constraints.
 6. **Integrated Plan**: combine Solar Panels, Dams, Farms, and three Factories.
 
-`New game` opens randomized Free play on 6x6 or 8x8 boards with all four building types. Choose one to eight Factory sites to control difficulty; a count cannot exceed the selected board size. Every added Factory adds another Steel district and more spatial and supplier constraints. `Practice` opens the guided level sequence, with a rule card before every lesson. Tutorial progress is stored locally in the browser.
+`New game` opens randomized Free play on 6x6 or 8x8 boards with all four building types. Choose one to eight Factory sites to control difficulty; a count cannot exceed the selected board size. Every added Factory adds another Steel district and more spatial and supplier constraints. `Tutorial` opens the guided lesson sequence, with a rule card before every level. Tutorial progress is stored locally in the browser.
 
 ## Tech Stack
 
@@ -50,6 +50,7 @@ npm run typecheck
 npm test
 npm run build
 npm run preview
+npm run package:itch
 ```
 
 ## Project Layout
@@ -60,7 +61,7 @@ src/
   game/          Phaser scene and board rendering
   jigsaw/        Rules, generator, solver, and puzzle types
   main.ts        DOM controls, menu flow, and local progress
-  styles.css     Town Planner interface styling
+  styles.css     Miniopolis interface styling
 tests/           Vitest coverage for rules and campaign levels
 docs/            Canonical grammar and implementation roadmap
 ```
@@ -69,6 +70,7 @@ docs/            Canonical grammar and implementation roadmap
 
 - [Core grammar](docs/city-constraint-puzzle-core-grammar.md): formal board, quota, and relationship rules.
 - [Implementation plan](docs/implementation-plan/README.md): completed work and upcoming phases.
+- [itch.io playtest release](docs/itchio-playtest.md): packaging, upload, and verification steps.
 
 ## Contributing
 

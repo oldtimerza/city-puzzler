@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete. The playable Phaser board includes responsive controls, legal-cell highlighting, undo/redo, reset, hints, solution preview, 6x6 and 8x8 practice boards, and the Town Planner visual system.
+Complete. The playable Phaser board includes responsive controls, legal-cell highlighting, undo/redo, reset, hints, solution preview, 6x6 and 8x8 Free play boards, and the Miniopolis visual system.
 
 ## Goal
 
@@ -16,21 +16,20 @@ Build a playable 6x6 level using the Phase 1 engine.
 
 - Distinct softly colored irregular regions with clear borders.
 - Geometric symbols for Solar Panels, Dams, and Farms.
-- A selected service and its legal candidate cells are visible.
+- A selected building and its legal candidate cells are visible.
 - Conflicts identify the precise row, column, region, or occupied cell causing them.
 - Farms only highlight as legal beside an orthogonally adjacent Dam.
 - District borders remain visible while legal candidate cells are highlighted.
-- Buildings retain the existing simple orientation marker, but orientation does not affect legality yet.
 
 ## Interaction
 
-- Select a service from the inventory.
+- Select a building from the inventory.
 - Click or tap a cell to place it.
-- Click or tap a placed service to remove it.
+- Click or tap a placed building to remove it.
 - Show candidate marks and conflicts before committing a placement.
 - Undo, redo, reset, and a held solution preview.
 - Support pointer input and the existing keyboard controls at phone-sized layouts.
 
 ## Exit criteria
 
-A player can understand and complete a level using district shapes, geometric service symbols, and conflict feedback.
+A player can understand and complete a level using district shapes, geometric building symbols, and conflict feedback.

@@ -1,4 +1,4 @@
-import type { Direction, Position } from "../core/types.js";
+import type { Position } from "../core/types.js";
 import { isFactorySupplied, isLevelComplete, validateLevel, validatePlacement } from "./rules.js";
 import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionResourceRequirements, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
@@ -6,7 +6,6 @@ export const BOARD_SIZES = [5, 6, 8] as const;
 export type BoardSize = (typeof BOARD_SIZES)[number];
 
 const PLACEMENT_ORDER: readonly ServiceType[] = ["water", "farm", "generator"];
-const ORIENTATIONS: readonly Direction[] = ["north", "east", "south", "west"];
 const cellsBySize = new Map<number, readonly Position[]>();
 
 export interface GeneratedJigsawLevel extends JigsawPuzzle {
@@ -84,7 +83,6 @@ export function generateJigsawLevel(
   const transformedSolution = solution.map((placement) => ({
     ...placement,
     position: transformPosition(placement.position, size, transform),
-    orientation: transformDirection(placement.orientation, transform),
   }));
 
   if (validateLevel(level).length > 0 || !isLevelComplete(level, transformedSolution)) {
@@ -98,7 +96,7 @@ export function generateJigsawLevel(
     title: `${size}x${size} Practice`,
     introduction: activeServices.includes("factory")
       ? "Balance solar power, water, food, and steel across a fresh district map."
-      : "Build a balanced town plan with a fresh district map.",
+      : "Build a balanced city plan with a fresh district map.",
     seed,
   };
 }
@@ -301,9 +299,11 @@ function placeFactoryRows(
       continue;
     }
 
+    // Preserve existing seeded layouts after removing the unused orientation value.
+    random();
     const result = placeFactoryRows(regions, size, random, row + 1, [
       ...placements,
-      { service: "factory", position, orientation: ORIENTATIONS[Math.floor(random() * ORIENTATIONS.length)]! },
+      { service: "factory", position },
     ]);
 
     if (result !== null) {
@@ -320,10 +320,11 @@ function placeFactories(level: JigsawLevel, placements: readonly ServicePlacemen
   }
 
   for (const position of shuffled(allCells(level.size as BoardSize), random)) {
+    // Preserve existing seeded layouts after removing the unused orientation value.
+    random();
     const candidate: ServicePlacement = {
       service: "factory",
       position,
-      orientation: ORIENTATIONS[Math.floor(random() * ORIENTATIONS.length)]!,
     };
     const next = [...placements, candidate];
 
@@ -375,9 +376,11 @@ function placeServiceInRows(
       continue;
     }
 
+    // Preserve existing seeded layouts after removing the unused orientation value.
+    random();
     const result = placeServiceInRows(regions, size, orderedServices, random, serviceIndex, row + 1, [
       ...placements,
-      { service, position, orientation: ORIENTATIONS[Math.floor(random() * ORIENTATIONS.length)]! },
+      { service, position },
     ], requireFactorySupport);
 
     if (result !== null) {
@@ -488,33 +491,6 @@ function transformPosition(position: Position, size: BoardSize, transform: numbe
   }
 
   return { row, column };
-}
-
-function transformDirection(direction: Direction, transform: number): Direction {
-  let result = direction;
-
-  for (let index = 0; index < transform % 4; index += 1) {
-    result = rotateClockwise(result);
-  }
-
-  if (transform >= 4) {
-    result = result === "east" ? "west" : result === "west" ? "east" : result;
-  }
-
-  return result;
-}
-
-function rotateClockwise(direction: Direction): Direction {
-  switch (direction) {
-    case "north":
-      return "east";
-    case "east":
-      return "south";
-    case "south":
-      return "west";
-    case "west":
-      return "north";
-  }
 }
 
 function seededRandom(seed: number): () => number {

@@ -6,17 +6,13 @@ import { BOARD_SIZES, generateJigsawLevel, jigsawLevelSignature, type BoardSize 
 import { SERVICE_TYPES, type ServiceType } from "./jigsaw/types.js";
 import "./styles.css";
 
-const DIRECTION_LABELS = { north: "North", east: "East", south: "South", west: "West" } as const;
 const PROGRESS_KEY = "town-planner.campaign.v1";
 
 const inventory = byId<HTMLDivElement>("inventory");
 const inventoryCount = byId<HTMLSpanElement>("inventory-count");
 const completionNotice = byId<HTMLDivElement>("completion-notice");
-const buildingOrientation = byId<HTMLSpanElement>("building-orientation");
-const rotate = byId<HTMLButtonElement>("rotate");
 const refresh = byId<HTMLButtonElement>("refresh");
 const mainMenu = byId<HTMLButtonElement>("main-menu");
-const levels = byId<HTMLButtonElement>("levels");
 const nextLevel = byId<HTMLButtonElement>("next-level");
 const undo = byId<HTMLButtonElement>("undo");
 const redo = byId<HTMLButtonElement>("redo");
@@ -34,6 +30,7 @@ const closeHelp = byId<HTMLButtonElement>("close-help");
 const campaignPicker = byId<HTMLElement>("campaign-picker");
 const campaignLevels = byId<HTMLDivElement>("campaign-levels");
 const backFromCampaign = byId<HTMLButtonElement>("back-from-campaign");
+const resetTutorialProgress = byId<HTMLButtonElement>("reset-tutorial-progress");
 const sizePicker = byId<HTMLElement>("size-picker");
 const startSizeGame = byId<HTMLButtonElement>("start-size-game");
 const backToStart = byId<HTMLButtonElement>("back-to-start");
@@ -42,6 +39,7 @@ const levelTipStep = byId<HTMLParagraphElement>("level-tip-step");
 const levelTipTitle = byId<HTMLHeadingElement>("level-tip-title");
 const levelTipCopy = byId<HTMLParagraphElement>("level-tip-copy");
 const dismissLevelTip = byId<HTMLButtonElement>("dismiss-level-tip");
+const gameHelp = byId<HTMLButtonElement>("game-help");
 const boardSizeChoices = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-board-size]"));
 const factoryCountChoices = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-factory-count]"));
 const factoryDifficulty = byId<HTMLSpanElement>("factory-difficulty");
@@ -52,6 +50,7 @@ let nextSeed = Date.now() >>> 0;
 let selectedBoardSize: BoardSize = 6;
 let selectedFactoryCount = 4;
 let activeCampaignIndex: number | null = null;
+let helpOpenedFromGame = false;
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "game",
@@ -77,12 +76,9 @@ for (const service of SERVICE_TYPES) {
   inventoryButtons.set(service, button);
 }
 
-rotate.addEventListener("click", () => scene().rotateSelectedService());
-document.addEventListener("keydown", rotateWithKey);
 document.addEventListener("keydown", showHintWithKey);
 refresh.addEventListener("click", () => refreshPuzzle());
 mainMenu.addEventListener("click", showMainMenu);
-levels.addEventListener("click", showCampaignPicker);
 nextLevel.addEventListener("click", startNextCampaignLevel);
 undo.addEventListener("click", () => scene().undo());
 redo.addEventListener("click", () => scene().redo());
@@ -94,9 +90,11 @@ openPractice.addEventListener("click", showCampaignPicker);
 openHelp.addEventListener("click", openHelpPanel);
 closeHelp.addEventListener("click", closeHelpPanel);
 backFromCampaign.addEventListener("click", showStartActions);
+resetTutorialProgress.addEventListener("click", resetTutorialProgressForPlaytest);
 startSizeGame.addEventListener("click", startFreePlay);
 backToStart.addEventListener("click", showStartActions);
 dismissLevelTip.addEventListener("click", hideLevelTip);
+gameHelp.addEventListener("click", showGameHelp);
 
 for (const choice of boardSizeChoices) {
   choice.addEventListener("click", () => selectBoardSize(Number(choice.dataset.boardSize)));
@@ -136,17 +134,14 @@ function renderControls(state: JigsawViewState): void {
     const count = state.placements.filter((placement) => placement.service === service).length;
     const total = state.quotas[service].total;
     placed += count;
-    button.textContent = `${serviceLabel(service)}  ${count}/${total}`;
+    button.textContent = `${buildingLabel(service)}  ${count}/${total}`;
     button.disabled = count === total;
     button.classList.toggle("selected", state.selectedService === service);
   }
 
-  const totalServices = state.activeServices.reduce((total, service) => total + state.quotas[service].total, 0);
-  inventoryCount.textContent = `${placed} / ${totalServices} placed`;
+  const totalBuildings = state.activeServices.reduce((total, service) => total + state.quotas[service].total, 0);
+  inventoryCount.textContent = `${placed} / ${totalBuildings} placed`;
   completionNotice.hidden = !state.complete;
-  buildingOrientation.textContent = DIRECTION_LABELS[state.orientation];
-  rotate.disabled = state.selectedService === null;
-  rotate.textContent = state.selectedService ? `Rotate ${serviceLabel(state.selectedService)} (R)` : "Rotate service (R)";
   undo.disabled = !state.canUndo;
   redo.disabled = !state.canRedo;
   refresh.hidden = activeCampaignIndex !== null;
@@ -199,7 +194,12 @@ function startCampaignLevel(index: number): void {
   activeCampaignIndex = index;
   scene().loadPuzzle(level);
   startMenu.hidden = true;
-  showLevelTip(level, index);
+
+  if (level.tutorialTip) {
+    showLevelTip(level, index);
+  } else {
+    hideLevelTip();
+  }
 }
 
 function startNextCampaignLevel(): void {
@@ -241,6 +241,7 @@ function showStartActions(): void {
 
 function showMainMenu(): void {
   hideLevelTip();
+  helpOpenedFromGame = false;
   startMenu.hidden = false;
   showStartActions();
 }
@@ -248,13 +249,19 @@ function showMainMenu(): void {
 function showLevelTip(level: CampaignLevel, index: number): void {
   levelTipStep.textContent = `Practice lesson ${index + 1} of ${CAMPAIGN_LEVELS.length}`;
   levelTipTitle.textContent = level.title;
-  levelTipCopy.textContent = level.tutorialTip;
+  levelTipCopy.textContent = level.tutorialTip ?? "";
   levelTip.hidden = false;
   dismissLevelTip.focus();
 }
 
 function hideLevelTip(): void {
   levelTip.hidden = true;
+}
+
+function showGameHelp(): void {
+  helpOpenedFromGame = true;
+  startMenu.hidden = false;
+  showHelpPanel();
 }
 
 function selectBoardSize(size: number): void {
@@ -334,7 +341,7 @@ function campaignLevelButton(level: CampaignLevel, index: number): HTMLButtonEle
   button.className = "campaign-level";
   button.disabled = !unlocked;
   button.innerHTML = unlocked
-    ? `<strong>${level.title}</strong><span>${level.boardSize}x${level.boardSize} · ${level.activeServices.map(serviceLabel).join(" + ")}</span>`
+    ? `<strong>${level.title}</strong><span>${level.boardSize}x${level.boardSize} · ${level.activeServices.map(buildingLabel).join(" + ")}</span>`
     : `<strong>Locked</strong><span>Complete ${CAMPAIGN_LEVELS[index - 1]!.title} to unlock.</span>`;
   button.addEventListener("click", () => startCampaignLevel(index));
   return button;
@@ -358,6 +365,17 @@ function isCampaignLevelUnlocked(index: number): boolean {
   return index === 0 || completedLevelIds.has(CAMPAIGN_LEVELS[index - 1]!.id);
 }
 
+function resetTutorialProgressForPlaytest(): void {
+  if (!window.confirm("Reset all Tutorial lesson progress on this device?")) {
+    return;
+  }
+
+  completedLevelIds.clear();
+  localStorage.removeItem(PROGRESS_KEY);
+  renderCampaignLevels();
+  campaignLevels.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+}
+
 function loadCompletedLevelIds(): Set<string> {
   try {
     const value = JSON.parse(localStorage.getItem(PROGRESS_KEY) ?? "[]");
@@ -372,6 +390,11 @@ function saveCompletedLevelIds(): void {
 }
 
 function openHelpPanel(): void {
+  helpOpenedFromGame = false;
+  showHelpPanel();
+}
+
+function showHelpPanel(): void {
   startMenuActions.hidden = true;
   campaignPicker.hidden = true;
   sizePicker.hidden = true;
@@ -383,17 +406,16 @@ function openHelpPanel(): void {
 function closeHelpPanel(): void {
   helpPanel.hidden = true;
   openHelp.setAttribute("aria-expanded", "false");
-  startMenuActions.hidden = false;
-  newGame.focus();
-}
 
-function rotateWithKey(event: KeyboardEvent): void {
-  if (event.repeat || event.key.toLowerCase() !== "r" || isTextInput(event.target) || !scene().getViewState().selectedService) {
+  if (helpOpenedFromGame) {
+    helpOpenedFromGame = false;
+    startMenu.hidden = true;
+    gameHelp.focus();
     return;
   }
 
-  event.preventDefault();
-  scene().rotateSelectedService();
+  startMenuActions.hidden = false;
+  newGame.focus();
 }
 
 function showHintWithKey(event: KeyboardEvent): void {
@@ -409,7 +431,7 @@ function isTextInput(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }
 
-function serviceLabel(service: ServiceType): string {
+function buildingLabel(service: ServiceType): string {
   switch (service) {
     case "generator":
       return "Solar panel";

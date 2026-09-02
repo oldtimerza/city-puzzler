@@ -21,6 +21,7 @@ describe("tutorial campaign", () => {
     expect(CAMPAIGN_LEVELS.every((level) => countSolutions(level.level, level.clues) === 1)).toBe(true);
     expect(CAMPAIGN_LEVELS.slice(-3).map((level) => level.level.quotas.factory.total)).toEqual([2, 3, 3]);
     expect(CAMPAIGN_LEVELS.slice(-3).every((level) => level.clues.every((placement) => placement.service !== "factory"))).toBe(true);
-    expect(CAMPAIGN_LEVELS.every((level) => level.tutorialTip.length > 0)).toBe(true);
+    expect(CAMPAIGN_LEVELS.filter((level) => level.id !== "steelworks").every((level) => (level.tutorialTip?.length ?? 0) > 0)).toBe(true);
+    expect(CAMPAIGN_LEVELS.find((level) => level.id === "steelworks")?.tutorialTip).toBeUndefined();
   });
 });

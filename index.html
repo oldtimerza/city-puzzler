@@ -4,21 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f3efe4" />
-    <title>Town Planner</title>
+    <title>Miniopolis</title>
   </head>
   <body>
     <main class="app-shell">
       <header class="masthead">
-        <p class="eyebrow">Town Planner</p>
+        <p class="eyebrow">Miniopolis</p>
         <h1>Keep every district supplied.</h1>
         <p class="intro">Balance solar power, water, and food across the whole town.</p>
       </header>
 
       <section id="start-menu" class="start-menu" role="dialog" aria-modal="true" aria-labelledby="start-menu-title">
         <div class="start-menu-card">
-          <p class="eyebrow">Town Planner</p>
+          <p class="eyebrow">Miniopolis</p>
           <h2 id="start-menu-title">A small town, well planned.</h2>
-          <p class="start-menu-intro">Build a balanced town plan, one service at a time.</p>
+          <p class="start-menu-intro">Plan a tiny city, one building at a time.</p>
           <div id="start-menu-actions" class="start-menu-actions">
             <button id="new-game" class="menu-button primary" type="button">New game</button>
             <button id="open-practice" class="menu-button" type="button">Tutorial</button>
@@ -27,9 +27,12 @@
 
           <section id="campaign-picker" class="campaign-picker" hidden aria-labelledby="campaign-picker-title">
             <h3 id="campaign-picker-title">Practice lessons</h3>
-            <p>Learn one rule at a time, then combine them into a full town plan.</p>
+            <p>Learn one rule at a time, then combine them into a full city plan.</p>
             <div id="campaign-levels" class="campaign-levels"></div>
-            <button id="back-from-campaign" class="menu-button close-campaign" type="button">Back</button>
+            <div class="campaign-picker-actions">
+              <button id="back-from-campaign" class="menu-button" type="button">Back</button>
+              <button id="reset-tutorial-progress" class="menu-button reset-tutorial-progress" type="button">Reset progress</button>
+            </div>
           </section>
 
           <section id="size-picker" class="size-picker" hidden aria-labelledby="size-picker-title">
@@ -72,8 +75,8 @@
             <h3>Goal</h3>
             <p>Place every active building icon once in each row, column, and district so every district receives its required resources. Tutorial levels introduce the building types one rule at a time.</p>
             <h3>Rules</h3>
-            <p>Each service icon must appear once in every row, column, and district unless a level says otherwise. A cell may contain only one service. Dots in a district's upper corner show resources it still needs: green for food, blue for water, gold for power, and red for steel.</p>
-            <div class="help-service-guide" aria-label="Service restrictions">
+            <p>Each building icon must appear once in every row, column, and district unless a level says otherwise. A cell may contain only one building. Dots in a district's upper corner show resources it still needs: green for food, blue for water, gold for power, and red for steel.</p>
+            <div class="help-service-guide" aria-label="Building restrictions">
               <article class="help-service-rule">
                 <span class="service-icon power" aria-hidden="true"></span>
                 <div>
@@ -104,7 +107,7 @@
               </article>
             </div>
             <h3>How to play</h3>
-            <p>Select a service, then click a highlighted legal cell. Click a placed site to remove it. Use <kbd>R</kbd> to rotate the selected service, <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
+            <p>Select a building, then click a highlighted legal cell. Click a placed building to remove it. Use <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
             <button id="close-help" class="menu-button close-help" type="button">Back</button>
           </section>
         </div>
@@ -119,8 +122,8 @@
         </div>
       </section>
 
-      <section class="game-layout" aria-label="Town Planner puzzle">
-        <div id="game" aria-label="Town planning board"></div>
+      <section class="game-layout" aria-label="Miniopolis puzzle">
+        <div id="game" aria-label="Miniopolis city planning board"></div>
 
         <aside class="controls" aria-label="Puzzle controls">
           <section class="inventory-section">
@@ -130,22 +133,14 @@
             </div>
             <div id="inventory" class="inventory"></div>
             <div id="completion-notice" class="completion-notice" role="status" aria-live="polite" hidden>
-              <strong>Town plan approved</strong>
+              <strong>City plan approved</strong>
               <span>Every district has its required resources.</span>
             </div>
           </section>
 
-          <section class="control-section">
-            <div class="section-heading">
-              <h2>Service orientation</h2>
-              <span id="building-orientation">East</span>
-            </div>
-            <button id="rotate" class="control-button" type="button" aria-keyshortcuts="R">Rotate service (R)</button>
-          </section>
-
           <section class="control-section utility-controls" aria-label="Board actions">
             <button id="main-menu" class="control-button levels" type="button">Main menu</button>
-            <button id="levels" class="control-button levels" type="button">Practice lessons</button>
+            <button id="game-help" class="control-button" type="button">Help</button>
             <button id="refresh" class="control-button refresh" type="button">Refresh puzzle</button>
             <button id="undo" class="control-button" type="button">Undo</button>
              <button id="redo" class="control-button" type="button">Redo</button>
@@ -155,7 +150,7 @@
             <button id="reset" class="control-button danger" type="button">Reset board</button>
           </section>
 
-          <p id="status" class="status" aria-live="polite">Select a town service, then choose a district cell.</p>
+          <p id="status" class="status" aria-live="polite">Select a building, then choose a district cell.</p>
           <p class="legend"><span class="generator">o</span> solar panel <span class="water">◇</span> dam <span class="farm">△</span> farm <span class="factory">■</span> factory</p>
         </aside>
       </section>

@@ -53,25 +53,25 @@ describe("Jigsaw service rules", () => {
   });
 
   it("enforces row, column, region, inventory, and cell conflicts per service", () => {
-    const generator: ServicePlacement = { service: "generator", position: { row: 0, column: 0 }, orientation: "east" };
-    const water: ServicePlacement = { service: "water", position: { row: 0, column: 1 }, orientation: "east" };
+    const generator: ServicePlacement = { service: "generator", position: { row: 0, column: 0 } };
+    const water: ServicePlacement = { service: "water", position: { row: 0, column: 1 } };
     const sameRegion = firstRegionPeer(generator.position);
 
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "generator", position: { row: 0, column: 3 }, orientation: "north" })).toContain("row-conflict");
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "generator", position: { row: 3, column: 0 }, orientation: "north" })).toContain("column-conflict");
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "generator", position: sameRegion, orientation: "north" })).toContain("region-conflict");
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: { row: 0, column: 2 }, orientation: "north" })).toEqual([]);
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: generator.position, orientation: "north" })).toContain("occupied-cell");
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator, water], { service: "farm", position: { row: 0, column: 2 }, orientation: "north" })).toEqual([]);
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator, water], { service: "farm", position: { row: 4, column: 4 }, orientation: "north" })).toContain("farm-dam-missing");
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "generator", position: { row: 0, column: 3 } })).toContain("row-conflict");
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "generator", position: { row: 3, column: 0 } })).toContain("column-conflict");
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "generator", position: sameRegion })).toContain("region-conflict");
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: { row: 0, column: 2 } })).toEqual([]);
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: generator.position })).toContain("occupied-cell");
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator, water], { service: "farm", position: { row: 0, column: 2 } })).toEqual([]);
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator, water], { service: "farm", position: { row: 4, column: 4 } })).toContain("farm-dam-missing");
   });
 
   it("requires farms to have water and keeps generators away from water", () => {
-    const generator: ServicePlacement = { service: "generator", position: { row: 0, column: 0 }, orientation: "east" };
-    const farm: ServicePlacement = { service: "farm", position: { row: 0, column: 1 }, orientation: "east" };
-    const water: ServicePlacement = { service: "water", position: { row: 0, column: 2 }, orientation: "east" };
+    const generator: ServicePlacement = { service: "generator", position: { row: 0, column: 0 } };
+    const farm: ServicePlacement = { service: "farm", position: { row: 0, column: 1 } };
+    const water: ServicePlacement = { service: "water", position: { row: 0, column: 2 } };
 
-    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: { row: 1, column: 0 }, orientation: "north" })).toContain(
+    expect(validatePlacement(JIGSAW_STARTER_LEVEL, [generator], { service: "water", position: { row: 1, column: 0 } })).toContain(
       "generator-water-conflict",
     );
     expect(isFarmSupplied([farm], farm)).toBe(false);
@@ -82,7 +82,7 @@ describe("Jigsaw service rules", () => {
   });
 
   it("identifies legal candidate cells and completes only the full valid layout", () => {
-    expect(legalPositions(JIGSAW_STARTER_LEVEL, [], "generator", "east")).toHaveLength(36);
+    expect(legalPositions(JIGSAW_STARTER_LEVEL, [], "generator")).toHaveLength(36);
     expect(validatePlacements(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION)).toEqual([]);
     expect(isLevelComplete(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION)).toBe(true);
     expect(isLevelComplete(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION.slice(0, -1))).toBe(false);
@@ -134,7 +134,7 @@ describe("Jigsaw service rules", () => {
     expect(factorySuppliers(factoryLevel.solution, factory).power).not.toBeNull();
     expect(resourceSupplyForRegion(factoryLevel.level, factoryLevel.solution, factoryRegion).steel).toBe(1);
     expect(inactiveFactories(factoryLevel.solution.filter((placement) => placement !== adjacentWater))).toContain(factory);
-    expect(validatePlacement(factoryLevel.level, [], { service: "factory", position: nonIndustrialCell, orientation: "east" })).toContain("factory-steel-demand-missing");
+    expect(validatePlacement(factoryLevel.level, [], { service: "factory", position: nonIndustrialCell })).toContain("factory-steel-demand-missing");
   });
 });
 

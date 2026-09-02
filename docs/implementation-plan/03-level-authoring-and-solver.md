@@ -6,7 +6,7 @@ In progress. The unique solver, immutable clues, Practice lesson picker, rule ca
 
 ## Goal
 
-Turn the current open practice board into a sequence of fair, uniquely solvable Town Planner levels.
+Turn the current open Free play board into a sequence of fair, uniquely solvable Miniopolis lessons.
 
 ## Campaign Structure
 
