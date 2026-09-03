@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 
+import { ChordAudio } from "./ChordAudio.js";
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
 import { samePosition, type Position } from "../jigsaw/position.js";
 import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, legalServicesAt, regionComponents, regionDefinitionAt, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
@@ -32,6 +33,12 @@ interface RequirementCallout {
   centerY: number;
 }
 
+interface SupportLink {
+  readonly dependent: ServicePlacement;
+  readonly supplier: ServicePlacement;
+  readonly key: string;
+}
+
 export interface JigsawViewState {
   readonly selectedService: ServiceType | null;
   readonly activeServices: readonly ServiceType[];
@@ -43,6 +50,7 @@ export interface JigsawViewState {
   readonly solutionRevealed: boolean;
   readonly showPlacementCandidates: boolean;
   readonly requirementsOnHover: boolean;
+  readonly soundEffectsEnabled: boolean;
   readonly title: string;
   readonly status: string;
 }
@@ -62,6 +70,8 @@ export class JigsawScene extends Phaser.Scene {
   private solutionRevealed = false;
   private showPlacementCandidates = true;
   private requirementsOnHover = false;
+  private soundEffectsEnabled = true;
+  private readonly audio = new ChordAudio();
   private status = "Click an empty cell to choose a symbol.";
   private boardLeft = 0;
   private boardTop = 0;
@@ -124,6 +134,7 @@ export class JigsawScene extends Phaser.Scene {
       this.future.push(this.placements);
       this.placements = previous;
       this.status = "Move undone.";
+      this.audio.playUndo();
     }
 
     this.renderBoard();
@@ -196,6 +207,17 @@ export class JigsawScene extends Phaser.Scene {
     this.publishState();
   }
 
+  setSoundEffectsEnabled(enabled: boolean, announce = true): void {
+    this.soundEffectsEnabled = enabled;
+    this.audio.setEnabled(enabled);
+
+    if (announce) {
+      this.status = enabled ? "Sound effects enabled." : "Sound effects muted.";
+    }
+
+    this.publishState();
+  }
+
   revealSolution(): void {
     this.placements = [...this.solution];
     this.history = [];
@@ -259,10 +281,12 @@ export class JigsawScene extends Phaser.Scene {
       if (single === null) {
         this.status = "No cells have exactly one available symbol.";
       } else {
+        const previous = this.placements;
         this.commit([...this.placements, single]);
         this.selectedService = null;
         this.placementMenuPosition = null;
         this.status = `Placed the only available ${symbolLabel(single.service).toLowerCase()}.`;
+        this.playPlacementSounds(previous, single, this.isComplete());
         this.renderBoard();
         this.publishState();
         return;
@@ -308,6 +332,7 @@ export class JigsawScene extends Phaser.Scene {
       solutionRevealed: this.solutionRevealed,
       showPlacementCandidates: this.showPlacementCandidates,
       requirementsOnHover: this.requirementsOnHover,
+      soundEffectsEnabled: this.soundEffectsEnabled,
       title: this.puzzle.title,
       status: this.status,
     };
@@ -585,12 +610,20 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   private renderSupplierLinks(placements: readonly ServicePlacement[]): void {
+    for (const link of this.supportLinks(placements)) {
+      this.renderSupplierLink(link.dependent, link.supplier);
+    }
+  }
+
+  private supportLinks(placements: readonly ServicePlacement[]): readonly SupportLink[] {
+    const links: SupportLink[] = [];
+
     for (const placement of placements) {
       if (placement.service === "farm") {
-        const dam = supplyingDam(placements, placement);
+        const supplier = supplyingDam(placements, placement);
 
-        if (dam) {
-          this.renderSupplierLink(placement, dam);
+        if (supplier) {
+          links.push(createSupportLink(placement, supplier));
         }
       }
 
@@ -598,14 +631,16 @@ export class JigsawScene extends Phaser.Scene {
         const suppliers = factorySuppliers(placements, placement);
 
         if (suppliers.power) {
-          this.renderSupplierLink(placement, suppliers.power);
+          links.push(createSupportLink(placement, suppliers.power));
         }
 
         if (suppliers.water) {
-          this.renderSupplierLink(placement, suppliers.water);
+          links.push(createSupportLink(placement, suppliers.water));
         }
       }
     }
+
+    return links;
   }
 
   private renderSupplierLink(dependent: ServicePlacement, supplier: ServicePlacement): void {
@@ -924,13 +959,15 @@ export class JigsawScene extends Phaser.Scene {
       return;
     }
 
+    const previous = this.placements;
     const candidate = { service, position };
     this.commit([...this.placements, candidate]);
     this.placementMenuPosition = null;
     const remainingFarms = this.placements.filter((placement) => placement.service === "farm" && !this.farmIsSupplied(this.placements, placement)).length;
     const inactiveFactoryCount = inactiveFactories(this.placements).length;
     const inactive = !this.placementIsActive(this.placements, candidate);
-    this.status = this.isComplete()
+    const complete = this.isComplete();
+    this.status = complete
       ? "Chord complete."
       : this.placements.length === totalInventory(this.level.quotas) && remainingFarms > 0
         ? `${remainingFarms} triangle${remainingFarms === 1 ? "" : "s"} still need an adjacent diamond.`
@@ -939,6 +976,7 @@ export class JigsawScene extends Phaser.Scene {
           : inactive
             ? `${symbolLabel(candidate.service)} placed but inactive until its support requirements are met.`
             : `${symbolLabel(candidate.service)} placed.`;
+    this.playPlacementSounds(previous, candidate, complete);
     this.renderBoard();
     this.publishState();
   }
@@ -955,6 +993,67 @@ export class JigsawScene extends Phaser.Scene {
     return placement.service === "farm"
       ? this.farmIsSupplied(placements, placement)
       : isPlacementActive(placements, placement);
+  }
+
+  private playPlacementSounds(previous: readonly ServicePlacement[], placement: ServicePlacement, complete: boolean): void {
+    this.audio.playPlacement(placement.service);
+
+    const previousLinkKeys = new Set(this.supportLinks(previous).map((link) => link.key));
+    const currentLinks = this.supportLinks(this.placements);
+    const addedLinks = currentLinks.filter((link) => !previousLinkKeys.has(link.key));
+    const activatesPlacedSymbol = (placement.service === "farm" || placement.service === "factory") && this.placementIsActive(this.placements, placement);
+    const activatesExistingSymbol = previous.some((current) => !this.placementIsActive(previous, current) && this.placementIsActive(this.placements, current));
+
+    if (addedLinks.length > 0) {
+      this.audio.playConnectionChain(this.connectedChain(placement, currentLinks).map((current) => current.service));
+    } else if (activatesPlacedSymbol || activatesExistingSymbol) {
+      this.audio.playActivation();
+    }
+
+    if (complete) {
+      this.audio.playCompletion();
+    }
+  }
+
+  private connectedChain(start: ServicePlacement, links: readonly SupportLink[]): readonly ServicePlacement[] {
+    const placements = new Map<string, ServicePlacement>();
+    const neighbours = new Map<string, string[]>();
+
+    for (const link of links) {
+      const dependentKey = placementKey(link.dependent);
+      const supplierKey = placementKey(link.supplier);
+      placements.set(dependentKey, link.dependent);
+      placements.set(supplierKey, link.supplier);
+      const dependentNeighbours = neighbours.get(dependentKey) ?? [];
+      const supplierNeighbours = neighbours.get(supplierKey) ?? [];
+      dependentNeighbours.push(supplierKey);
+      supplierNeighbours.push(dependentKey);
+      neighbours.set(dependentKey, dependentNeighbours);
+      neighbours.set(supplierKey, supplierNeighbours);
+    }
+
+    const startKey = placementKey(start);
+    const visited = new Set<string>([startKey]);
+    const queue = [startKey];
+    const chain: ServicePlacement[] = [];
+
+    while (queue.length > 0) {
+      const currentKey = queue.shift()!;
+      const placement = placements.get(currentKey);
+
+      if (placement) {
+        chain.push(placement);
+      }
+
+      for (const neighbour of neighbours.get(currentKey) ?? []) {
+        if (!visited.has(neighbour)) {
+          visited.add(neighbour);
+          queue.push(neighbour);
+        }
+      }
+    }
+
+    return chain;
   }
 
   private isComplete(): boolean {
@@ -1119,6 +1218,14 @@ function arrowWing(side: CalloutSide): Readonly<{ x: number; y: number }> {
 
 function positionKey(position: Position): string {
   return `${position.row}:${position.column}`;
+}
+
+function placementKey(placement: ServicePlacement): string {
+  return `${placement.service}:${positionKey(placement.position)}`;
+}
+
+function createSupportLink(dependent: ServicePlacement, supplier: ServicePlacement): SupportLink {
+  return { dependent, supplier, key: `${placementKey(dependent)}>${placementKey(supplier)}` };
 }
 
 function closestTunnelCells(firstComponent: readonly Position[], secondComponent: readonly Position[]): readonly [Position, Position] {

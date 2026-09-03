@@ -8,6 +8,7 @@ import { SERVICE_TYPES, type JigsawPuzzle, type ServiceType } from "./jigsaw/typ
 import "./styles.css";
 
 const PROGRESS_KEY = "chord.campaign.v1";
+const SOUND_EFFECTS_KEY = "chord.sound-effects.v1";
 
 const inventoryCount = byId<HTMLSpanElement>("inventory-count");
 const completionNotice = byId<HTMLDivElement>("completion-notice");
@@ -20,6 +21,7 @@ const hint = byId<HTMLButtonElement>("hint");
 const showPlacements = byId<HTMLInputElement>("show-placements");
 const resolveSingles = byId<HTMLButtonElement>("resolve-singles");
 const requirementDisplay = byId<HTMLInputElement>("requirement-display");
+const soundEffects = byId<HTMLInputElement>("sound-effects");
 const showSolution = byId<HTMLButtonElement>("show-solution");
 const reset = byId<HTMLButtonElement>("reset");
 const status = byId<HTMLParagraphElement>("status");
@@ -51,6 +53,7 @@ const dismissLevelTip = byId<HTMLButtonElement>("dismiss-level-tip");
 const gameHelp = byId<HTMLButtonElement>("game-help");
 
 const completedLevelIds = loadCompletedLevelIds();
+const soundEffectsEnabled = loadSoundEffectsEnabled();
 let nextSeed = Date.now() >>> 0;
 let selectedDifficulty: ChordDifficulty = "standard";
 let activeCampaignIndex: number | null = null;
@@ -82,6 +85,10 @@ hint.addEventListener("click", () => scene().showHint());
 showPlacements.addEventListener("change", () => scene().togglePlacementCandidates());
 resolveSingles.addEventListener("click", () => scene().resolveSingles());
 requirementDisplay.addEventListener("change", () => scene().toggleRequirementDisplay());
+soundEffects.addEventListener("change", () => {
+  scene().setSoundEffectsEnabled(soundEffects.checked);
+  saveSoundEffectsEnabled(soundEffects.checked);
+});
 showSolution.addEventListener("click", () => scene().revealSolution());
 reset.addEventListener("click", () => scene().reset());
 newGame.addEventListener("click", showDifficultyPicker);
@@ -112,6 +119,7 @@ function attachSceneEvents(): void {
   }
 
   const puzzleScene = scene();
+  puzzleScene.setSoundEffectsEnabled(soundEffectsEnabled, false);
   puzzleScene.events.on("statechange", renderControls);
   renderControls(puzzleScene.getViewState());
 }
@@ -134,6 +142,8 @@ function renderControls(state: JigsawViewState): void {
   showPlacements.checked = state.showPlacementCandidates;
   requirementDisplay.checked = state.requirementsOnHover;
   requirementDisplay.disabled = state.solutionRevealed;
+  soundEffects.checked = state.soundEffectsEnabled;
+  soundEffects.disabled = state.solutionRevealed;
   reset.disabled = state.solutionRevealed;
   const canContinueCampaign = activeCampaignIndex !== null && activeCampaignIndex < CAMPAIGN_LEVELS.length - 1;
   nextLevel.hidden = !(state.complete && (activeCampaignIndex === null || canContinueCampaign));
@@ -328,6 +338,22 @@ function loadCompletedLevelIds(): Set<string> {
 
 function saveCompletedLevelIds(): void {
   localStorage.setItem(PROGRESS_KEY, JSON.stringify([...completedLevelIds]));
+}
+
+function loadSoundEffectsEnabled(): boolean {
+  try {
+    return localStorage.getItem(SOUND_EFFECTS_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function saveSoundEffectsEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(SOUND_EFFECTS_KEY, String(enabled));
+  } catch {
+    // Keep the setting for this session if browser storage is unavailable.
+  }
 }
 
 function openHelpPanel(): void {
