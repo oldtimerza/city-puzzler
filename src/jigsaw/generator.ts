@@ -15,11 +15,12 @@ export interface GeneratedJigsawLevel extends JigsawPuzzle {
 
 export type QuotaOverrides = Readonly<Partial<Record<ServiceType, ServiceQuota>>>;
 export type ChordDifficulty = "guided" | "standard" | "expert";
+export type RegionTopology = "connected" | "tunnels";
 
 const CHORD_CLUE_COUNTS: Readonly<Record<ChordDifficulty, number>> = {
-  guided: 10,
-  standard: 6,
-  expert: 2,
+  guided: 3,
+  standard: 2,
+  expert: 1,
 };
 
 export function generateJigsawLevel(
@@ -28,6 +29,7 @@ export function generateJigsawLevel(
   activeServices: readonly ServiceType[] = SERVICE_TYPES,
   quotaOverrides: QuotaOverrides = {},
   steelRegions: readonly string[] = [],
+  topology: RegionTopology = "connected",
 ): GeneratedJigsawLevel {
   if (size === 5 && (["generator", "water", "farm"] as const).every((service) => activeServices.includes(service))) {
     throw new Error("The full Circle-Diamond-Triangle profile is not supported on a 5x5 board.");
@@ -41,7 +43,11 @@ export function generateJigsawLevel(
   const requiresFullFactoryLayout = activeServices.includes("factory") && quotas.factory.total === size;
 
   for (let attempt = 0; attempt < 12 && solution === null; attempt += 1) {
-    const candidateRegions = buildIrregularRegions(size, random);
+    const candidateRegions = buildIrregularRegions(size, random, topology);
+
+    if (candidateRegions === null) {
+      continue;
+    }
     const baseSolution = solveServiceLayout(candidateRegions, size, activeServices.filter((service) => service !== "factory"), random);
     const factoryCandidateRegions = steelRegions.length > 0 ? steelRegions : [...new Set(candidateRegions.flat())];
     const factoryPlacementLevel: JigsawLevel = {
@@ -109,10 +115,24 @@ export function generateJigsawLevel(
   };
 }
 
+export function generateRegionLayout(seed: number, size: BoardSize = 8, topology: RegionTopology = "tunnels"): readonly (readonly string[])[] {
+  const random = seededRandom(seed);
+
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const regions = buildIrregularRegions(size, random, topology);
+
+    if (regions !== null) {
+      return regions;
+    }
+  }
+
+  throw new Error(`Seed ${seed} could not produce a ${topology} ${size}x${size} region layout.`);
+}
+
 export function generateChordLevel(seed: number, difficulty: ChordDifficulty = "standard"): GeneratedJigsawLevel {
   for (let attempt = 0; attempt < 48; attempt += 1) {
     const candidateSeed = (seed + attempt) >>> 0;
-    const generated = generateJigsawLevel(candidateSeed, 6);
+    const generated = generateJigsawLevel(candidateSeed, 6, SERVICE_TYPES, {}, [], "tunnels");
     const clues = reduceToUniqueClues(generated.level, generated.solution, CHORD_CLUE_COUNTS[difficulty], seededRandom(candidateSeed ^ 0x9e3779b9));
 
     if (clues.length === CHORD_CLUE_COUNTS[difficulty] && countSolutions(generated.level, clues) === 1) {
@@ -199,10 +219,11 @@ function transformRegions(regions: readonly (readonly string[])[], size: BoardSi
   return result;
 }
 
-function buildIrregularRegions(size: BoardSize, random: () => number): readonly (readonly string[])[] {
+function buildIrregularRegions(size: BoardSize, random: () => number, topology: RegionTopology): readonly (readonly string[])[] | null {
   const regions = copyRegions(initialRegions(size));
-  let bestRegions = copyRegions(regions);
-  let bestScore = shapeScore(bestRegions, size);
+  const targetTunnelCount = topology === "tunnels" ? random() < 0.5 ? 1 : 2 : 0;
+  let bestRegions: string[][] | null = targetTunnelCount === 0 ? copyRegions(regions) : null;
+  let bestScore = targetTunnelCount === 0 ? shapeScore(regions, size) : Number.NEGATIVE_INFINITY;
 
   for (let attempt = 0; attempt < size * size * 48; attempt += 1) {
     const first = allCells(size)[Math.floor(random() * size * size)]!;
@@ -217,7 +238,15 @@ function buildIrregularRegions(size: BoardSize, random: () => number): readonly 
     regions[first.row]![first.column] = secondRegion;
     regions[second.row]![second.column] = firstRegion;
 
-    if (!regionIsConnected(regions, size, firstRegion) || !regionIsConnected(regions, size, secondRegion)) {
+    if (regionComponentCount(regions, size, firstRegion) > 2 || regionComponentCount(regions, size, secondRegion) > 2) {
+      regions[first.row]![first.column] = firstRegion;
+      regions[second.row]![second.column] = secondRegion;
+      continue;
+    }
+
+    const tunnelCount = tunnelDistrictCount(regions, size);
+
+    if (tunnelCount > targetTunnelCount) {
       regions[first.row]![first.column] = firstRegion;
       regions[second.row]![second.column] = secondRegion;
       continue;
@@ -225,7 +254,7 @@ function buildIrregularRegions(size: BoardSize, random: () => number): readonly 
 
     const score = shapeScore(regions, size);
 
-    if (!hasSimpleRegionShape(regions, size) && score > bestScore) {
+    if (!hasSimpleRegionShape(regions, size) && tunnelCount === targetTunnelCount && score > bestScore) {
       bestRegions = copyRegions(regions);
       bestScore = score;
     }
@@ -252,29 +281,37 @@ function initialRegions(size: BoardSize): string[][] {
   );
 }
 
-function regionIsConnected(regions: readonly (readonly string[])[], size: BoardSize, region: string): boolean {
+function tunnelDistrictCount(regions: readonly (readonly string[])[], size: BoardSize): number {
+  return Array.from({ length: size }, (_, index) => regionName(index)).filter((region) => regionComponentCount(regions, size, region) === 2).length;
+}
+
+function regionComponentCount(regions: readonly (readonly string[])[], size: BoardSize, region: string): number {
   const cells = allCells(size).filter((cell) => regions[cell.row]![cell.column] === region);
-  const visited = new Set<string>();
-  const queue = [cells[0]!];
+  const cellKeys = new Set(cells.map(positionKey));
+  const unvisited = new Map(cells.map((cell) => [positionKey(cell), cell]));
+  let components = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const key = positionKey(current);
+  while (unvisited.size > 0) {
+    const first = unvisited.values().next().value as Position;
+    const queue = [first];
+    unvisited.delete(positionKey(first));
+    components += 1;
 
-    if (visited.has(key)) {
-      continue;
-    }
+    while (queue.length > 0) {
+      const current = queue.shift()!;
 
-    visited.add(key);
+      for (const neighbour of orthogonalNeighbours(current)) {
+        const key = positionKey(neighbour);
 
-    for (const neighbour of orthogonalNeighbours(current)) {
-      if (inBounds(neighbour, size) && regions[neighbour.row]![neighbour.column] === region && !visited.has(positionKey(neighbour))) {
-        queue.push(neighbour);
+        if (cellKeys.has(key) && unvisited.has(key)) {
+          unvisited.delete(key);
+          queue.push(neighbour);
+        }
       }
     }
   }
 
-  return visited.size === cells.length;
+  return components;
 }
 
 function shapeScore(regions: readonly (readonly string[])[], size: BoardSize): number {

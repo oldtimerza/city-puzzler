@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION } from "../../src/content/jigsaw-starter-level.js";
-import { BOARD_SIZES, generateChordLevel, generateJigsawLevel } from "../../src/jigsaw/generator.js";
+import { BOARD_SIZES, generateChordLevel, generateJigsawLevel, generateRegionLayout } from "../../src/jigsaw/generator.js";
 import { countSolutions } from "../../src/jigsaw/solver.js";
-import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, legalPositions, regionAt, resourceSupplyForRegion, supplyingDam, unmetResourcesForRegion, unsuppliedFarms, validateLevel, validatePlacement, validatePlacements } from "../../src/jigsaw/rules.js";
+import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, legalPositions, legalServicesAt, regionAt, regionComponents, resourceSupplyForRegion, supplyingDam, unmetResourcesForRegion, unsuppliedFarms, validateLevel, validatePlacement, validatePlacements } from "../../src/jigsaw/rules.js";
 import type { JigsawLevel, ServicePlacement } from "../../src/jigsaw/types.js";
 
 describe("Jigsaw service rules", () => {
@@ -25,6 +25,7 @@ describe("Jigsaw service rules", () => {
 
     expect(generated.every(({ level }) => validateLevel(level).length === 0)).toBe(true);
     expect(generated.every(({ level, solution }) => isLevelComplete(level, solution))).toBe(true);
+    expect(generated.every(({ level }) => tunnelDistricts(level).length === 0)).toBe(true);
     expect(generated.every(({ level }) => countStraightRegions(level.regions) === 0)).toBe(true);
     expect(generated.every(({ level }) => countSimpleLRegions(level.regions) === 0)).toBe(true);
     expect(new Set(generated.map(({ level }) => JSON.stringify(level.regions))).size).toBeGreaterThan(5);
@@ -37,15 +38,28 @@ describe("Jigsaw service rules", () => {
     expect(validateLevel(JIGSAW_STARTER_LEVEL)).toEqual([]);
   });
 
+  it("builds varied connected region layouts for the editor", () => {
+    const layouts = ([6, 8] as const).flatMap((size) => {
+      const level = generateJigsawLevel(800 + size, size, ["water", "farm", "generator"]).level;
+      return Array.from({ length: 4 }, (_, index) => ({ level, regions: generateRegionLayout(index + size * 10, size) }));
+    });
+
+    expect(layouts.every(({ level, regions }) => validateLevel({ ...level, regions }).length === 0)).toBe(true);
+    expect(layouts.every(({ level, regions }) => tunnelDistricts({ ...level, regions }).length >= 1 && tunnelDistricts({ ...level, regions }).length <= 2)).toBe(true);
+    expect(new Set(layouts.map(({ regions }) => JSON.stringify(regions))).size).toBeGreaterThan(2);
+  });
+
   it.each(["guided", "standard", "expert"] as const)("generates a uniquely solvable %s Chord", (difficulty) => {
     const puzzle = generateChordLevel(71, difficulty);
 
     expect(puzzle.level.size).toBe(6);
-    expect(puzzle.clues).toHaveLength(difficulty === "guided" ? 10 : difficulty === "standard" ? 6 : 2);
+    expect(puzzle.clues).toHaveLength(difficulty === "guided" ? 3 : difficulty === "standard" ? 2 : 1);
+    expect(tunnelDistricts(puzzle.level).length).toBeGreaterThanOrEqual(1);
+    expect(tunnelDistricts(puzzle.level).length).toBeLessThanOrEqual(2);
     expect(countSolutions(puzzle.level, puzzle.clues)).toBe(1);
   });
 
-  it("rejects a disconnected region map", () => {
+  it("rejects a normal district split into more than two components", () => {
     const disconnected: JigsawLevel = {
       ...JIGSAW_STARTER_LEVEL,
       regions: [
@@ -58,7 +72,25 @@ describe("Jigsaw service rules", () => {
       ],
     };
 
-    expect(validateLevel(disconnected)).toContain("disconnected-region");
+    expect(validateLevel(disconnected)).toContain("invalid-tunnel-components");
+  });
+
+  it("accepts two separated components as one tunnel district without creating adjacency", () => {
+    const tunnelLevel = levelWithTunnelDistrict();
+    const [firstComponent, secondComponent] = regionComponents(tunnelLevel.level, tunnelLevel.region);
+    const left = firstComponent![0]!;
+    const right = secondComponent![0]!;
+    const farm: ServicePlacement = { service: "farm", position: left };
+    const water: ServicePlacement = { service: "water", position: right };
+    const generator: ServicePlacement = { service: "generator", position: left };
+
+    expect(validateLevel(tunnelLevel.level)).toEqual([]);
+    expect(regionComponents(tunnelLevel.level, tunnelLevel.region)).toHaveLength(2);
+    expect(isLevelComplete(tunnelLevel.level, JIGSAW_STARTER_SOLUTION)).toBe(true);
+    expect(countSolutions(tunnelLevel.level, JIGSAW_STARTER_SOLUTION)).toBe(1);
+    expect(isFarmSupplied([farm, water], farm)).toBe(false);
+    expect(validatePlacement(tunnelLevel.level, [generator], water)).not.toContain("generator-water-conflict");
+    expect(validatePlacement(tunnelLevel.level, [generator], { service: "generator", position: right })).toContain("region-conflict");
   });
 
   it("keeps dead terrain out of the Queens quotas and placements", () => {
@@ -108,6 +140,16 @@ describe("Jigsaw service rules", () => {
     expect(validatePlacements(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION)).toEqual([]);
     expect(isLevelComplete(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION)).toBe(true);
     expect(isLevelComplete(JIGSAW_STARTER_LEVEL, JIGSAW_STARTER_SOLUTION.slice(0, -1))).toBe(false);
+  });
+
+  it("lists the currently legal symbols for an empty cell", () => {
+    const generator: ServicePlacement = { service: "generator", position: { row: 0, column: 0 } };
+    const services = legalServicesAt(JIGSAW_STARTER_LEVEL, [generator], { row: 0, column: 2 });
+
+    expect(services).toContain("water");
+    expect(services).not.toContain("generator");
+    expect(services).not.toContain("factory");
+    expect(legalServicesAt(JIGSAW_STARTER_LEVEL, [generator], generator.position)).toEqual([]);
   });
 
   it("tracks district resources and requires every district demand to be met", () => {
@@ -221,4 +263,38 @@ function levelWithOneDeadCell(): JigsawLevel {
   }
 
   throw new Error("Expected a cell that can become connected dead terrain.");
+}
+
+function levelWithTunnelDistrict(): Readonly<{ level: JigsawLevel; region: string }> {
+  for (let sourceRow = 0; sourceRow < JIGSAW_STARTER_LEVEL.size; sourceRow += 1) {
+    for (let sourceColumn = 0; sourceColumn < JIGSAW_STARTER_LEVEL.size; sourceColumn += 1) {
+      const region = JIGSAW_STARTER_LEVEL.regions[sourceRow]![sourceColumn]!;
+
+      for (let row = 0; row < JIGSAW_STARTER_LEVEL.size; row += 1) {
+        for (let column = 0; column < JIGSAW_STARTER_LEVEL.size; column += 1) {
+          if (
+            JIGSAW_STARTER_LEVEL.regions[row]![column] === region
+            || Math.abs(row - sourceRow) + Math.abs(column - sourceColumn) === 1
+            || JIGSAW_STARTER_SOLUTION.some((placement) => placement.position.row === row && placement.position.column === column)
+          ) {
+            continue;
+          }
+
+          const regions = JIGSAW_STARTER_LEVEL.regions.map((regionRow) => [...regionRow]);
+          regions[row]![column] = region;
+          const level: JigsawLevel = { ...JIGSAW_STARTER_LEVEL, regions };
+
+          if (validateLevel(level).length === 0 && regionComponents(level, region).length === 2 && isLevelComplete(level, JIGSAW_STARTER_SOLUTION)) {
+            return { level, region };
+          }
+        }
+      }
+    }
+  }
+
+  throw new Error("Expected a cell that can form a valid tunnel district.");
+}
+
+function tunnelDistricts(level: JigsawLevel): string[] {
+  return [...new Set(level.regions.flat())].filter((region) => level.regionDefinitions[region]?.type === "normal" && regionComponents(level, region).length === 2);
 }

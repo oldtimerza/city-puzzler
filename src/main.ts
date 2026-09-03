@@ -4,7 +4,7 @@ import { CAMPAIGN_LEVELS, type CampaignLevel } from "./content/campaign-levels.j
 import { mountExperimentalEditor } from "./editor/ExperimentalEditor.js";
 import { JigsawScene, type JigsawViewState } from "./game/JigsawScene.js";
 import { generateChordLevel, type ChordDifficulty } from "./jigsaw/generator.js";
-import { SERVICE_TYPES, type ServiceType } from "./jigsaw/types.js";
+import { SERVICE_TYPES, type JigsawPuzzle, type ServiceType } from "./jigsaw/types.js";
 import "./styles.css";
 
 const PROGRESS_KEY = "chord.campaign.v1";
@@ -17,6 +17,9 @@ const nextLevel = byId<HTMLButtonElement>("next-level");
 const undo = byId<HTMLButtonElement>("undo");
 const redo = byId<HTMLButtonElement>("redo");
 const hint = byId<HTMLButtonElement>("hint");
+const showPlacements = byId<HTMLButtonElement>("show-placements");
+const resolveSingles = byId<HTMLButtonElement>("resolve-singles");
+const requirementDisplay = byId<HTMLButtonElement>("requirement-display");
 const showSolution = byId<HTMLButtonElement>("show-solution");
 const reset = byId<HTMLButtonElement>("reset");
 const status = byId<HTMLParagraphElement>("status");
@@ -52,6 +55,7 @@ let nextSeed = Date.now() >>> 0;
 let selectedDifficulty: ChordDifficulty = "standard";
 let activeCampaignIndex: number | null = null;
 let helpOpenedFromGame = false;
+let testingEditorBoard = false;
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "game",
@@ -70,11 +74,14 @@ const game = new Phaser.Game({
 
 document.addEventListener("keydown", showHintWithKey);
 refresh.addEventListener("click", refreshPuzzle);
-mainMenu.addEventListener("click", showMainMenu);
+mainMenu.addEventListener("click", () => testingEditorBoard ? showExperimentalEditor() : showMainMenu());
 nextLevel.addEventListener("click", startNextCampaignLevel);
 undo.addEventListener("click", () => scene().undo());
 redo.addEventListener("click", () => scene().redo());
 hint.addEventListener("click", () => scene().showHint());
+showPlacements.addEventListener("click", () => scene().togglePlacementCandidates());
+resolveSingles.addEventListener("click", () => scene().resolveSingles());
+requirementDisplay.addEventListener("click", () => scene().toggleRequirementDisplay());
 showSolution.addEventListener("click", () => scene().revealSolution());
 reset.addEventListener("click", () => scene().reset());
 newGame.addEventListener("click", showDifficultyPicker);
@@ -95,7 +102,7 @@ for (const choice of difficultyChoices) {
 }
 
 renderCampaignLevels();
-mountExperimentalEditor(experimentalEditorBoard, experimentalEditorTools);
+mountExperimentalEditor(experimentalEditorBoard, experimentalEditorTools, testEditorBoard);
 attachSceneEvents();
 
 function attachSceneEvents(): void {
@@ -118,14 +125,21 @@ function renderControls(state: JigsawViewState): void {
   completionNotice.hidden = !state.complete;
   undo.disabled = !state.canUndo;
   redo.disabled = !state.canRedo;
-  refresh.hidden = activeCampaignIndex !== null;
+  refresh.hidden = activeCampaignIndex !== null || testingEditorBoard;
   showSolution.hidden = activeCampaignIndex !== null;
   showSolution.disabled = state.solutionRevealed;
   hint.disabled = state.solutionRevealed;
+  showPlacements.disabled = state.solutionRevealed;
+  resolveSingles.disabled = state.solutionRevealed;
+  showPlacements.textContent = state.showPlacementCandidates ? "Hide placements" : "Show placements";
+  showPlacements.setAttribute("aria-pressed", String(state.showPlacementCandidates));
+  requirementDisplay.textContent = state.requirementsOnHover ? "Requirements: hover" : "Requirements: always";
+  requirementDisplay.setAttribute("aria-pressed", String(state.requirementsOnHover));
   reset.disabled = state.solutionRevealed;
   const canContinueCampaign = activeCampaignIndex !== null && activeCampaignIndex < CAMPAIGN_LEVELS.length - 1;
   nextLevel.hidden = !(state.complete && (activeCampaignIndex === null || canContinueCampaign));
   nextLevel.textContent = activeCampaignIndex === null ? "Back to menu" : "Next level";
+  mainMenu.textContent = testingEditorBoard ? "Return to editor" : "Main menu";
   status.textContent = state.status;
   status.classList.toggle("complete", state.complete);
 }
@@ -136,6 +150,7 @@ function scene(): JigsawScene {
 
 function startGame(): void {
   activeCampaignIndex = null;
+  testingEditorBoard = false;
   refreshPuzzle();
   startMenu.hidden = true;
   hideLevelTip();
@@ -154,6 +169,7 @@ function startCampaignLevel(index: number): void {
   }
 
   activeCampaignIndex = index;
+  testingEditorBoard = false;
   scene().loadPuzzle(level);
   startMenu.hidden = true;
 
@@ -206,6 +222,7 @@ function showStartActions(): void {
 
 function showExperimentalEditor(): void {
   hideLevelTip();
+  testingEditorBoard = false;
   startMenu.hidden = true;
   experimentalEditorScreen.hidden = false;
   experimentalEditorTools.querySelector<HTMLButtonElement>(".editor-brush.selected")?.focus();
@@ -214,9 +231,17 @@ function showExperimentalEditor(): void {
 function showMainMenu(): void {
   hideLevelTip();
   helpOpenedFromGame = false;
+  testingEditorBoard = false;
   startMenu.hidden = false;
   experimentalEditorScreen.hidden = true;
   showStartActions();
+}
+
+function testEditorBoard(puzzle: JigsawPuzzle): void {
+  activeCampaignIndex = null;
+  testingEditorBoard = true;
+  scene().loadPuzzle(puzzle);
+  experimentalEditorScreen.hidden = true;
 }
 
 function showLevelTip(level: CampaignLevel, index: number): void {

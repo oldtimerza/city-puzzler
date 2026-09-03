@@ -4,7 +4,7 @@ Chord is an abstract symbol-grammar puzzle. Place Circle, Diamond, Triangle, and
 
 ## New Chord
 
-New Chord creates a uniquely solvable `6x6` board. Choose a clue profile: **Guided** has 10 immutable clues, **Standard** has 6, and **Expert** has 2.
+New Chord creates a uniquely solvable `6x6` board. Choose a clue profile: **Guided** has 3 immutable clues, **Standard** has 2, and **Expert** has 1.
 
 ## Symbol Grammar
 

@@ -31,13 +31,13 @@
             <p>Choose how many fixed clues guide a uniquely solvable 6x6 Chord.</p>
             <div class="difficulty-choices" role="group" aria-label="Chord difficulty">
               <button class="difficulty-choice" type="button" data-difficulty="guided">
-                <strong>Guided</strong><span>10 fixed clues</span>
+                <strong>Guided</strong><span>3 fixed clues</span>
               </button>
               <button class="difficulty-choice selected" type="button" data-difficulty="standard">
-                <strong>Standard</strong><span>6 fixed clues</span>
+                <strong>Standard</strong><span>2 fixed clues</span>
               </button>
               <button class="difficulty-choice" type="button" data-difficulty="expert">
-                <strong>Expert</strong><span>2 fixed clues</span>
+                <strong>Expert</strong><span>1 fixed clue</span>
               </button>
             </div>
             <div class="difficulty-actions">
@@ -58,14 +58,16 @@
 
           <section id="help-panel" class="help-panel" hidden aria-label="How to play">
             <h3>Goal</h3>
-            <p>Place every active symbol once in each row, column, and region. The small glyphs in a region show the symbols it still requires. Tutorial levels introduce one relationship at a time.</p>
+            <p>Place every active symbol once in each row, column, and district. Floating requirement markers point to districts that still need symbols. Tutorial levels introduce one relationship at a time.</p>
             <h3>Rules</h3>
-            <p>Each symbol must appear once in every row, column, and region unless a level says otherwise. A cell may contain only one symbol. The upper corner of a region shows its missing symbols.</p>
+            <p>Each symbol must appear once in every row, column, and region unless a level says otherwise. A cell may contain only one symbol. A callout arrow identifies each region's missing symbols.</p>
             <p>A red slash over a Triangle or Square means it does not currently meet its support requirements. It does not count toward its region's needs until the slash disappears.</p>
             <div class="help-inactive-example" role="img" aria-label="A Square with a red slash that does not count toward its region">
               <span class="inactive-symbol-icon" aria-hidden="true"><span class="service-icon square"></span></span>
               <span><strong>Not yet active</strong><small>This Square needs an adjacent Circle and Diamond before it counts.</small></span>
             </div>
+            <h3>District tunnels</h3>
+            <p>Two separate parts with the same district are joined by an arched tunnel line. They count as one district for quotas and requirements, but the arch is not an edge: shapes on opposite ends do not support, conflict with, or touch one another.</p>
             <div class="help-service-guide" aria-label="Symbol relationships">
               <article class="help-service-rule">
                 <span class="service-icon circle" aria-hidden="true"></span>
@@ -97,7 +99,7 @@
               </article>
             </div>
             <h3>How to play</h3>
-            <p>Click an empty cell to choose from the symbols that can legally go there. Click a placed symbol to remove it. Use <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
+            <p>Click an empty cell to choose from the symbols that can legally go there. Use Show placements to display every currently legal symbol, Resolve singles to fill the first single-option cell, or Requirements to switch between all callouts and hover-only callouts. Click a placed symbol to remove it. Use <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
             <button id="close-help" class="menu-button close-help" type="button">Back</button>
           </section>
         </div>
@@ -146,9 +148,12 @@
             <button id="game-help" class="control-button" type="button">Help</button>
             <button id="refresh" class="control-button refresh" type="button">Refresh puzzle</button>
             <button id="undo" class="control-button" type="button">Undo</button>
-             <button id="redo" class="control-button" type="button">Redo</button>
-             <button id="hint" class="control-button" type="button" aria-keyshortcuts="T">Hint (T)</button>
-             <button id="show-solution" class="control-button solution" type="button">Show solution</button>
+              <button id="redo" class="control-button" type="button">Redo</button>
+              <button id="hint" class="control-button" type="button" aria-keyshortcuts="T">Hint (T)</button>
+              <button id="show-placements" class="control-button" type="button" aria-pressed="false">Show placements</button>
+              <button id="resolve-singles" class="control-button" type="button">Resolve singles</button>
+              <button id="requirement-display" class="control-button" type="button" aria-pressed="false">Requirements: always</button>
+              <button id="show-solution" class="control-button solution" type="button">Show solution</button>
             <button id="next-level" class="control-button next-level" type="button" hidden>Next level</button>
             <button id="reset" class="control-button danger" type="button">Reset board</button>
           </section>

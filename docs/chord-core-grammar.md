@@ -8,7 +8,7 @@ This is the canonical ruleset for Chord. New Chord uses one uniquely solvable `6
 
 A board is a square `N x N` grid. New Chord uses `N = 6`; tutorial boards may use other sizes.
 
-Every cell belongs to exactly one region. A standard `N x N` board has exactly `N` normal regions. Regions are disjoint, cover the board, and are connected through shared edges. A level may add connected dead regions, whose cells are blocked terrain; dead regions do not count toward the `N` normal regions and may have any positive size.
+Every cell belongs to exactly one district. A standard `N x N` board has exactly `N` normal districts. Districts are disjoint and cover the board. A normal district has either one edge-connected component or exactly two edge-disconnected components. Two components form an inferred tunnel district and are shown with an arched connector. A level may add connected dead regions, whose cells are blocked terrain; dead regions do not count toward the `N` normal districts and may have any positive size.
 
 ```text
 G = { (r, c) | 1 <= r, c <= N }
@@ -17,7 +17,7 @@ union(Ri) = G
 Ri intersect Rj = empty, for i != j
 ```
 
-Only edge-sharing cells are adjacent. Diagonal contact does not count.
+Only edge-sharing cells are adjacent. Diagonal contact does not count. A tunnel connector establishes district topology only: it never creates symbol adjacency, relationship support, or Circle-Diamond exclusion.
 
 ## Symbols And Quotas
 
@@ -80,15 +80,17 @@ The New Chord difficulties differ only in immutable clue count, and every genera
 
 | Difficulty | Total clues | Distribution |
 | --- | --- | --- |
-| Guided | 10 | More fixed placements. |
-| Standard | 6 | Default balance. |
-| Expert | 2 | Fewest fixed placements. |
+| Guided | 3 | More fixed placements. |
+| Standard | 2 | Default balance. |
+| Expert | 1 | Fewest fixed placements. |
 
 ## Completion And Generation
 
 A board is complete when it satisfies its quotas, normal-region requirements, cell exclusivity, and applicable relationship rules. Dead terrain is ignored by completion.
 
 Generated boards construct a valid full placement, derive immutable clues, and accept the result only when the solver finds exactly one solution. A known generated placement alone is not evidence of uniqueness.
+
+New Chord and editor-randomised boards generate one or two tunnel districts. Authored campaign lessons retain physically connected districts unless explicitly designed otherwise.
 
 ## Implementation References
 

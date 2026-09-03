@@ -22,7 +22,7 @@ This produces `chord-itch.zip`. Its root contains `index.html`, the `assets/` di
 ## Playtest Checks
 
 - Load the game in itch.io's embedded frame and confirm no browser-console errors.
-- Start New Chord at Guided, Standard, and Expert difficulty; confirm the selected 10, 6, and 2 fixed-clue counts on the `6x6` board.
+- Start New Chord at Guided, Standard, and Expert difficulty; confirm the selected 3, 2, and 1 fixed-clue counts on the `6x6` board.
 - Complete Tutorial lessons in order, refresh, and confirm progress persists.
 - Use "Reset tutorial progress" before onboarding tests.
 - Test pointer input on desktop and touch input at a narrow viewport.

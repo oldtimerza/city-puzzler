@@ -2,7 +2,7 @@ import Phaser from "phaser";
 
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
 import { samePosition, type Position } from "../jigsaw/position.js";
-import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, regionDefinitionAt, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
+import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, legalServicesAt, regionComponents, regionDefinitionAt, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
 import { SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
 const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
@@ -17,7 +17,20 @@ const RESOURCE_SYMBOLS: Readonly<Record<ResourceType, ServiceType>> = {
   power: "generator",
   steel: "factory",
 };
-const REGION_COLORS = [0xeee6d1, 0xdce9df, 0xe8dfec, 0xf0e0d4, 0xdce5ef, 0xece2ca, 0xdcece9, 0xeee0d1];
+const REGION_COLORS = [0xf0c4c4, 0x91d46f, 0xb9d8ec, 0xeed782, 0x86a5dd, 0xf4a640, 0xe9b6d2, 0xc9ced4];
+
+type CalloutSide = "top" | "bottom" | "left" | "right";
+
+interface RequirementCallout {
+  readonly region: string;
+  readonly services: readonly ServiceType[];
+  readonly side: CalloutSide;
+  readonly target: Readonly<{ x: number; y: number }>;
+  readonly width: number;
+  readonly height: number;
+  centerX: number;
+  centerY: number;
+}
 
 export interface JigsawViewState {
   readonly selectedService: ServiceType | null;
@@ -28,6 +41,8 @@ export interface JigsawViewState {
   readonly canRedo: boolean;
   readonly complete: boolean;
   readonly solutionRevealed: boolean;
+  readonly showPlacementCandidates: boolean;
+  readonly requirementsOnHover: boolean;
   readonly title: string;
   readonly status: string;
 }
@@ -45,6 +60,8 @@ export class JigsawScene extends Phaser.Scene {
   private hint: ServicePlacement | null = null;
   private showSolutionPreview = false;
   private solutionRevealed = false;
+  private showPlacementCandidates = false;
+  private requirementsOnHover = false;
   private status = "Click an empty cell to choose a symbol.";
   private boardLeft = 0;
   private boardTop = 0;
@@ -58,6 +75,8 @@ export class JigsawScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor("#f4f0e6");
     this.scale.on(Phaser.Scale.Events.RESIZE, this.renderBoard, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.renderBoard, this));
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, this.dismissPlacementMenuOutsideBoard, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.off(Phaser.Input.Events.POINTER_DOWN, this.dismissPlacementMenuOutsideBoard, this));
     this.renderBoard();
     this.publishState();
   }
@@ -150,12 +169,31 @@ export class JigsawScene extends Phaser.Scene {
     this.renderBoard();
   }
 
+  togglePlacementCandidates(): void {
+    this.showPlacementCandidates = !this.showPlacementCandidates;
+    this.status = this.showPlacementCandidates
+      ? "Showing symbols that can be placed in each empty cell."
+      : "Placement candidates hidden.";
+    this.renderBoard();
+    this.publishState();
+  }
+
+  toggleRequirementDisplay(): void {
+    this.requirementsOnHover = !this.requirementsOnHover;
+    this.status = this.requirementsOnHover
+      ? "Requirement callouts now appear when you hover a district."
+      : "Showing requirement callouts for every district.";
+    this.renderBoard();
+    this.publishState();
+  }
+
   revealSolution(): void {
     this.placements = [...this.solution];
     this.history = [];
     this.future = [];
     this.selectedService = null;
     this.hint = null;
+    this.hoveredCell = null;
     this.placementMenuPosition = null;
     this.showSolutionPreview = false;
     this.solutionRevealed = true;
@@ -170,6 +208,7 @@ export class JigsawScene extends Phaser.Scene {
     this.future = [];
     this.selectedService = null;
     this.hint = null;
+    this.hoveredCell = null;
     this.placementMenuPosition = null;
     this.showSolutionPreview = false;
     this.solutionRevealed = false;
@@ -194,6 +233,28 @@ export class JigsawScene extends Phaser.Scene {
       this.status = this.hint
         ? `Hint: place a ${symbolLabel(this.hint.service).toLowerCase()} in the highlighted cell.`
         : "No compatible hint remains for this plan.";
+    }
+
+    this.renderBoard();
+    this.publishState();
+  }
+
+  resolveSingles(): void {
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+    } else if (this.showSolutionPreview) {
+      this.status = "Release the solution preview before resolving singles.";
+    } else {
+      const single = this.nextSinglePlacement();
+
+      if (single === null) {
+        this.status = "No cells have exactly one available symbol.";
+      } else {
+        this.commit([...this.placements, single]);
+        this.selectedService = null;
+        this.placementMenuPosition = null;
+        this.status = `Placed the only available ${symbolLabel(single.service).toLowerCase()}.`;
+      }
     }
 
     this.renderBoard();
@@ -233,6 +294,8 @@ export class JigsawScene extends Phaser.Scene {
       canRedo: this.future.length > 0,
       complete: this.isComplete(),
       solutionRevealed: this.solutionRevealed,
+      showPlacementCandidates: this.showPlacementCandidates,
+      requirementsOnHover: this.requirementsOnHover,
       title: this.puzzle.title,
       status: this.status,
     };
@@ -241,7 +304,8 @@ export class JigsawScene extends Phaser.Scene {
   private renderBoard(): void {
     this.children.removeAll(true);
 
-    const boardPixels = Math.min(this.scale.width, this.scale.height) - 34;
+    const boardMargin = Math.max(82, Math.round(Math.min(this.scale.width, this.scale.height) * 0.1));
+    const boardPixels = Math.min(this.scale.width, this.scale.height) - boardMargin * 2;
     this.cellSize = Math.max(28, Math.floor(boardPixels / this.level.size));
     const boardSize = this.cellSize * this.level.size;
     this.boardLeft = Math.floor((this.scale.width - boardSize) / 2);
@@ -253,7 +317,7 @@ export class JigsawScene extends Phaser.Scene {
       : new Set<string>();
 
     this.add
-      .text(this.boardLeft, Math.max(9, this.boardTop - 25), this.showSolutionPreview ? "REFERENCE PLAN" : this.puzzle.title.toUpperCase(), {
+      .text(this.boardLeft, Math.max(9, this.boardTop - 43), this.showSolutionPreview ? "REFERENCE PLAN" : this.puzzle.title.toUpperCase(), {
         fontFamily: "Avenir Next, Trebuchet MS, sans-serif",
         fontSize: "13px",
         fontStyle: "bold",
@@ -270,6 +334,8 @@ export class JigsawScene extends Phaser.Scene {
 
     this.renderDistrictBorders();
 
+    this.renderTunnelArches();
+
     this.renderPreview();
 
     if (this.hint && !this.showSolutionPreview) {
@@ -278,11 +344,13 @@ export class JigsawScene extends Phaser.Scene {
 
     this.renderSupplierLinks(displayedPlacements);
 
+    this.renderPlacementCandidates();
+
     for (const placement of displayedPlacements) {
       this.renderService(placement, displayedPlacements);
     }
 
-    this.renderDistrictResourceDots(displayedPlacements);
+    this.renderDistrictRequirementCallouts(displayedPlacements);
 
     this.renderPlacementMenu();
 
@@ -357,6 +425,52 @@ export class JigsawScene extends Phaser.Scene {
     drawBorders();
     borders.lineStyle(Math.max(3, Math.round(this.cellSize * 0.04)), 0x233d40, 1);
     drawBorders();
+  }
+
+  private renderTunnelArches(): void {
+    const regions = [...new Set(this.level.regions.flat())];
+
+    for (const region of regions) {
+      if (this.level.regionDefinitions[region]?.type !== "normal") {
+        continue;
+      }
+
+      const components = regionComponents(this.level, region);
+
+      if (components.length !== 2) {
+        continue;
+      }
+
+      const [first, second] = closestTunnelCells(components[0]!, components[1]!);
+      const start = this.cellCenter(first);
+      const end = this.cellCenter(second);
+      const deltaX = end.x - start.x;
+      const deltaY = end.y - start.y;
+      const distance = Math.hypot(deltaX, deltaY);
+      const archHeight = Math.max(this.cellSize * 0.48, Math.min(distance * 0.28, this.cellSize * 1.3));
+      const control = {
+        x: (start.x + end.x) / 2 - (deltaY / distance) * archHeight,
+        y: (start.y + end.y) / 2 + (deltaX / distance) * archHeight,
+      };
+      const color = REGION_COLORS[(region.charCodeAt(0) - "A".charCodeAt(0)) % REGION_COLORS.length]!;
+      const arch = this.add.graphics();
+      const curve = new Phaser.Curves.QuadraticBezier(
+        new Phaser.Math.Vector2(start.x, start.y),
+        new Phaser.Math.Vector2(control.x, control.y),
+        new Phaser.Math.Vector2(end.x, end.y),
+      );
+
+      arch.lineStyle(Math.max(5, Math.round(this.cellSize * 0.085)), 0xf7f3e9, 0.9);
+      curve.draw(arch, 24);
+      arch.lineStyle(Math.max(2, Math.round(this.cellSize * 0.04)), color, 0.95);
+      curve.draw(arch, 24);
+      arch.fillStyle(0xf8f5ec, 1);
+      arch.fillCircle(start.x, start.y, Math.max(5, this.cellSize * 0.12));
+      arch.fillCircle(end.x, end.y, Math.max(5, this.cellSize * 0.12));
+      arch.lineStyle(Math.max(2, Math.round(this.cellSize * 0.035)), color, 1);
+      arch.strokeCircle(start.x, start.y, Math.max(5, this.cellSize * 0.12));
+      arch.strokeCircle(end.x, end.y, Math.max(5, this.cellSize * 0.12));
+    }
   }
 
   private renderPreview(): void {
@@ -504,42 +618,170 @@ export class JigsawScene extends Phaser.Scene {
     slash.lineBetween(centerX - offset, centerY + offset, centerX + offset, centerY - offset);
   }
 
-  private renderDistrictResourceDots(placements: readonly ServicePlacement[]): void {
-    const regions = [...new Set(this.level.regions.flat())];
-    const symbolSize = Math.max(3, Math.round(this.cellSize * 0.06));
-    const spacing = symbolSize * 2 + Math.max(3, Math.round(this.cellSize * 0.05));
+  private renderPlacementCandidates(): void {
+    if (!this.showPlacementCandidates || this.showSolutionPreview) {
+      return;
+    }
 
-    for (const region of regions) {
-      const unmet = unmetResourcesForRegion(this.level, placements, region, (currentPlacements, placement) => this.placementIsActive(currentPlacements, placement));
+    const symbolSize = Math.max(4, Math.round(this.cellSize * 0.07));
+    const spread = Math.max(9, Math.round(this.cellSize * 0.15));
 
-      if (unmet.length === 0) {
-        continue;
+    for (let row = 0; row < this.level.size; row += 1) {
+      for (let column = 0; column < this.level.size; column += 1) {
+        const position = { row, column };
+
+        if (regionDefinitionAt(this.level, position).type === "dead" || this.placements.some((placement) => samePosition(placement.position, position))) {
+          continue;
+        }
+
+        const services = legalServicesAt(this.level, this.placements, position);
+        const center = this.cellCenter(position);
+
+        services.forEach((service, index) => {
+          const offset = candidateOffset(services.length, index, spread);
+          this.renderSmallSymbol(service, center.x + offset.x, center.y + offset.y, symbolSize, 0.62, 2);
+        });
       }
+    }
+  }
 
-      const anchor = this.regionTopCorner(region);
-      const { x, y } = this.cellOrigin(anchor);
-      const startX = x + symbolSize + Math.max(5, Math.round(this.cellSize * 0.08));
-      const centerY = y + symbolSize + Math.max(5, Math.round(this.cellSize * 0.08));
+  private renderDistrictRequirementCallouts(placements: readonly ServicePlacement[]): void {
+    const callouts = this.requirementCallouts(placements);
 
-      unmet.forEach((resource, index) => {
-        this.renderRequirementSymbol(RESOURCE_SYMBOLS[resource], startX + index * spacing, centerY, symbolSize);
+    for (const callout of callouts) {
+      const left = callout.centerX - callout.width / 2;
+      const top = callout.centerY - callout.height / 2;
+      const graphics = this.add.graphics().setDepth(6);
+      const arrowStart = calloutArrowStart(callout);
+      const wing = arrowWing(callout.side);
+
+      graphics.lineStyle(1.5, 0x30474a, 0.82);
+      graphics.lineBetween(arrowStart.x, arrowStart.y, callout.target.x, callout.target.y);
+      graphics.fillStyle(0x30474a, 0.9);
+      graphics.fillTriangle(callout.target.x, callout.target.y, callout.target.x + wing.x, callout.target.y + wing.y, callout.target.x - wing.x, callout.target.y - wing.y);
+      graphics.fillStyle(0xfffcf4, 0.97);
+      graphics.fillRoundedRect(left, top, callout.width, callout.height, callout.height / 2);
+      graphics.lineStyle(1.5, 0x30474a, 0.9);
+      graphics.strokeRoundedRect(left, top, callout.width, callout.height, callout.height / 2);
+
+      const symbolSize = Math.max(4, Math.round(this.cellSize * 0.06));
+      const spacing = symbolSize * 2.35;
+      const startX = callout.centerX - ((callout.services.length - 1) * spacing) / 2;
+
+      callout.services.forEach((service, index) => {
+        this.renderSmallSymbol(service, startX + index * spacing, callout.centerY, symbolSize, 1, 7);
       });
     }
   }
 
-  private renderRequirementSymbol(service: ServiceType, centerX: number, centerY: number, symbolSize: number): void {
+  private requirementCallouts(placements: readonly ServicePlacement[]): RequirementCallout[] {
+    const hoveredRegion = this.hoveredCell === null ? null : this.level.regions[this.hoveredCell.row]![this.hoveredCell.column]!;
+    const regions = this.requirementsOnHover
+      ? hoveredRegion === null ? [] : [hoveredRegion]
+      : [...new Set(this.level.regions.flat())];
+    const pending = regions.flatMap((region) => {
+      const unmet = unmetResourcesForRegion(this.level, placements, region, (currentPlacements, placement) => this.placementIsActive(currentPlacements, placement));
+
+      if (unmet.length === 0) {
+        return [];
+      }
+
+      const services = unmet.map((resource) => RESOURCE_SYMBOLS[resource]);
+      const side = this.calloutSide(region);
+      const target = this.cellCenter(this.regionEdgeCell(region, side));
+      const symbolSize = Math.max(4, Math.round(this.cellSize * 0.06));
+      const width = Math.max(30, services.length * symbolSize * 2.5 + 12);
+      const height = Math.max(21, symbolSize * 3.3 + 8);
+
+      return [{ region, services, side, target, width, height, centerX: target.x, centerY: target.y }];
+    });
+
+    for (const side of ["top", "bottom", "left", "right"] as const) {
+      const callouts = pending.filter((callout) => callout.side === side).sort((left, right) => (side === "top" || side === "bottom" ? left.target.x - right.target.x : left.target.y - right.target.y));
+      let previousEnd = Number.NEGATIVE_INFINITY;
+
+      for (const callout of callouts) {
+        const horizontal = side === "top" || side === "bottom";
+        const halfSize = (horizontal ? callout.width : callout.height) / 2;
+        const minimum = horizontal ? this.boardLeft + halfSize + 3 : this.boardTop + halfSize + 3;
+        const maximum = horizontal
+          ? this.boardLeft + this.cellSize * this.level.size - halfSize - 3
+          : this.boardTop + this.cellSize * this.level.size - halfSize - 3;
+        const targetCoordinate = horizontal ? callout.target.x : callout.target.y;
+        const coordinate = Phaser.Math.Clamp(Math.max(targetCoordinate, previousEnd + halfSize + 5), minimum, maximum);
+
+        if (horizontal) {
+          callout.centerX = coordinate;
+          callout.centerY = side === "top" ? this.boardTop - callout.height / 2 - 9 : this.boardTop + this.cellSize * this.level.size + callout.height / 2 + 9;
+        } else {
+          callout.centerX = side === "left" ? this.boardLeft - callout.width / 2 - 9 : this.boardLeft + this.cellSize * this.level.size + callout.width / 2 + 9;
+          callout.centerY = coordinate;
+        }
+
+        previousEnd = coordinate + halfSize;
+      }
+    }
+
+    return pending;
+  }
+
+  private calloutSide(region: string): CalloutSide {
+    const cells = this.regionCells(region);
+    const minimumRow = Math.min(...cells.map((cell) => cell.row));
+    const maximumRow = Math.max(...cells.map((cell) => cell.row));
+    const minimumColumn = Math.min(...cells.map((cell) => cell.column));
+    const maximumColumn = Math.max(...cells.map((cell) => cell.column));
+    const candidates: readonly { readonly side: CalloutSide; readonly distance: number }[] = [
+      { side: "top", distance: minimumRow },
+      { side: "bottom", distance: this.level.size - 1 - maximumRow },
+      { side: "left", distance: minimumColumn },
+      { side: "right", distance: this.level.size - 1 - maximumColumn },
+    ];
+
+    return candidates.reduce((closest, candidate) => candidate.distance < closest.distance ? candidate : closest).side;
+  }
+
+  private regionEdgeCell(region: string, side: CalloutSide): Position {
+    const cells = this.regionCells(region);
+    const edge = side === "top"
+      ? Math.min(...cells.map((cell) => cell.row))
+      : side === "bottom"
+        ? Math.max(...cells.map((cell) => cell.row))
+        : side === "left"
+          ? Math.min(...cells.map((cell) => cell.column))
+          : Math.max(...cells.map((cell) => cell.column));
+    const edgeCells = cells.filter((cell) => side === "top" || side === "bottom" ? cell.row === edge : cell.column === edge);
+
+    return edgeCells[Math.floor(edgeCells.length / 2)]!;
+  }
+
+  private regionCells(region: string): Position[] {
+    const cells: Position[] = [];
+
+    for (let row = 0; row < this.level.size; row += 1) {
+      for (let column = 0; column < this.level.size; column += 1) {
+        if (this.level.regions[row]![column] === region) {
+          cells.push({ row, column });
+        }
+      }
+    }
+
+    return cells;
+  }
+
+  private renderSmallSymbol(service: ServiceType, centerX: number, centerY: number, symbolSize: number, alpha: number, depth: number): void {
     const outline = 0x30474a;
 
     switch (service) {
       case "generator":
-        this.add.circle(centerX, centerY, symbolSize, SERVICE_COLORS.generator).setStrokeStyle(1, outline);
+        this.add.circle(centerX, centerY, symbolSize, SERVICE_COLORS.generator).setStrokeStyle(1, outline).setAlpha(alpha).setDepth(depth);
         break;
       case "water":
-        this.add.rectangle(centerX, centerY, symbolSize * 1.4, symbolSize * 1.4, SERVICE_COLORS.water).setRotation(Math.PI / 4).setStrokeStyle(1, outline);
+        this.add.rectangle(centerX, centerY, symbolSize * 1.4, symbolSize * 1.4, SERVICE_COLORS.water).setRotation(Math.PI / 4).setStrokeStyle(1, outline).setAlpha(alpha).setDepth(depth);
         break;
       case "farm":
         {
-          const triangle = this.add.graphics();
+          const triangle = this.add.graphics().setAlpha(alpha).setDepth(depth);
           triangle.fillStyle(SERVICE_COLORS.farm);
           triangle.lineStyle(1, outline);
           triangle.fillTriangle(centerX, centerY - symbolSize, centerX + symbolSize, centerY + symbolSize, centerX - symbolSize, centerY + symbolSize);
@@ -547,7 +789,7 @@ export class JigsawScene extends Phaser.Scene {
         }
         break;
       case "factory":
-        this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(1, outline);
+        this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(1, outline).setAlpha(alpha).setDepth(depth);
         break;
     }
   }
@@ -559,18 +801,13 @@ export class JigsawScene extends Phaser.Scene {
       return;
     }
 
-    const services = SERVICE_TYPES.filter((service) => this.canPlaceServiceAt(position, service));
+    const services = legalServicesAt(this.level, this.placements, position);
 
     if (services.length === 0) {
       return;
     }
 
-    const optionSize = Math.max(36, Math.round(this.cellSize * 0.6));
-    const menuWidth = services.length * optionSize + 12;
-    const menuHeight = optionSize + 12;
-    const cell = this.cellCenter(position);
-    const left = Phaser.Math.Clamp(cell.x - menuWidth / 2, 8, this.scale.width - menuWidth - 8);
-    const top = Phaser.Math.Clamp(cell.y - menuHeight / 2, 8, this.scale.height - menuHeight - 8);
+    const { optionSize, menuWidth, menuHeight, left, top } = this.placementMenuLayout(position, services);
 
     this.add.rectangle(left + menuWidth / 2, top + menuHeight / 2, menuWidth, menuHeight, 0xf8f5ec, 0.98).setStrokeStyle(2, 0x30474a, 0.95).setDepth(20);
 
@@ -639,18 +876,29 @@ export class JigsawScene extends Phaser.Scene {
     this.publishState();
   }
 
+  private dismissPlacementMenuOutsideBoard(pointer: Phaser.Input.Pointer): void {
+    if (this.placementMenuPosition === null || this.isOnBoard(pointer.x, pointer.y) || this.isInPlacementMenu(pointer.x, pointer.y)) {
+      return;
+    }
+
+    this.placementMenuPosition = null;
+    this.hoveredCell = null;
+    this.status = "Placement choice dismissed.";
+    this.renderBoard();
+    this.publishState();
+  }
+
   private createPlacement(position: Position): ServicePlacement {
     return { service: this.selectedService!, position };
   }
 
   private canPlaceServiceAt(position: Position, service: ServiceType): boolean {
-    const candidate = { service, position };
-    return this.placementIssues(candidate).length === 0;
+    return legalServicesAt(this.level, this.placements, position).includes(service);
   }
 
   private openPlacementMenu(position: Position): void {
     this.selectedService = null;
-    this.placementMenuPosition = SERVICE_TYPES.some((service) => this.canPlaceServiceAt(position, service)) ? position : null;
+    this.placementMenuPosition = legalServicesAt(this.level, this.placements, position).length > 0 ? position : null;
     this.status = this.placementMenuPosition === null
       ? "No symbols can be placed in that cell."
       : "Choose a symbol for this cell.";
@@ -718,6 +966,26 @@ export class JigsawScene extends Phaser.Scene {
     return positions;
   }
 
+  private nextSinglePlacement(): ServicePlacement | null {
+    for (let row = 0; row < this.level.size; row += 1) {
+      for (let column = 0; column < this.level.size; column += 1) {
+        const position = { row, column };
+
+        if (this.placements.some((placement) => samePosition(placement.position, position))) {
+          continue;
+        }
+
+        const services = legalServicesAt(this.level, this.placements, position);
+
+        if (services.length === 1) {
+          return { service: services[0]!, position };
+        }
+      }
+    }
+
+    return null;
+  }
+
   private commit(next: ServicePlacement[]): void {
     this.history.push(this.placements);
     this.placements = next;
@@ -738,16 +1006,41 @@ export class JigsawScene extends Phaser.Scene {
     return { x: x + this.cellSize / 2, y: y + this.cellSize / 2 };
   }
 
-  private regionTopCorner(region: string): Position {
-    for (let row = 0; row < this.level.size; row += 1) {
-      for (let column = 0; column < this.level.size; column += 1) {
-        if (this.level.regions[row]![column] === region) {
-          return { row, column };
-        }
-      }
+  private isOnBoard(x: number, y: number): boolean {
+    const boardSize = this.cellSize * this.level.size;
+    return x >= this.boardLeft && x <= this.boardLeft + boardSize && y >= this.boardTop && y <= this.boardTop + boardSize;
+  }
+
+  private isInPlacementMenu(x: number, y: number): boolean {
+    const position = this.placementMenuPosition;
+
+    if (position === null) {
+      return false;
     }
 
-    throw new Error(`Unknown region ${region}.`);
+    const services = legalServicesAt(this.level, this.placements, position);
+
+    if (services.length === 0) {
+      return false;
+    }
+
+    const { left, top, menuWidth, menuHeight } = this.placementMenuLayout(position, services);
+    return x >= left && x <= left + menuWidth && y >= top && y <= top + menuHeight;
+  }
+
+  private placementMenuLayout(position: Position, services: readonly ServiceType[]): Readonly<{ optionSize: number; menuWidth: number; menuHeight: number; left: number; top: number }> {
+    const optionSize = Math.max(36, Math.round(this.cellSize * 0.6));
+    const menuWidth = services.length * optionSize + 12;
+    const menuHeight = optionSize + 12;
+    const cell = this.cellCenter(position);
+
+    return {
+      optionSize,
+      menuWidth,
+      menuHeight,
+      left: Phaser.Math.Clamp(cell.x - menuWidth / 2, 8, this.scale.width - menuWidth - 8),
+      top: Phaser.Math.Clamp(cell.y - menuHeight / 2, 8, this.scale.height - menuHeight - 8),
+    };
   }
 
   private publishState(): void {
@@ -771,8 +1064,68 @@ export class JigsawScene extends Phaser.Scene {
   }
 }
 
+function candidateOffset(count: number, index: number, spread: number): Readonly<{ x: number; y: number }> {
+  if (count === 1) {
+    return { x: 0, y: 0 };
+  }
+
+  if (count === 2) {
+    return { x: index === 0 ? -spread / 2 : spread / 2, y: 0 };
+  }
+
+  if (count === 3) {
+    return [
+      { x: 0, y: -spread / 2 },
+      { x: -spread / 2, y: spread / 2 },
+      { x: spread / 2, y: spread / 2 },
+    ][index]!;
+  }
+
+  return [
+    { x: -spread / 2, y: -spread / 2 },
+    { x: spread / 2, y: -spread / 2 },
+    { x: -spread / 2, y: spread / 2 },
+    { x: spread / 2, y: spread / 2 },
+  ][index]!;
+}
+
+function calloutArrowStart(callout: RequirementCallout): Readonly<{ x: number; y: number }> {
+  switch (callout.side) {
+    case "top":
+      return { x: callout.centerX, y: callout.centerY + callout.height / 2 };
+    case "bottom":
+      return { x: callout.centerX, y: callout.centerY - callout.height / 2 };
+    case "left":
+      return { x: callout.centerX + callout.width / 2, y: callout.centerY };
+    case "right":
+      return { x: callout.centerX - callout.width / 2, y: callout.centerY };
+  }
+}
+
+function arrowWing(side: CalloutSide): Readonly<{ x: number; y: number }> {
+  return side === "top" || side === "bottom" ? { x: 4, y: 0 } : { x: 0, y: 4 };
+}
+
 function positionKey(position: Position): string {
   return `${position.row}:${position.column}`;
+}
+
+function closestTunnelCells(firstComponent: readonly Position[], secondComponent: readonly Position[]): readonly [Position, Position] {
+  let result: readonly [Position, Position] = [firstComponent[0]!, secondComponent[0]!];
+  let shortestDistance = Number.POSITIVE_INFINITY;
+
+  for (const first of firstComponent) {
+    for (const second of secondComponent) {
+      const distance = (first.row - second.row) ** 2 + (first.column - second.column) ** 2;
+
+      if (distance < shortestDistance) {
+        result = [first, second];
+        shortestDistance = distance;
+      }
+    }
+  }
+
+  return result;
 }
 
 function symbolLabel(service: ServiceType): string {

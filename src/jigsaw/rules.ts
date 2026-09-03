@@ -1,7 +1,7 @@
 import { samePosition, type Position } from "./position.js";
 import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type RegionDefinition, type RegionResourceRequirements, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
-export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-normal-region-count" | "disconnected-region" | "invalid-region-definitions" | "invalid-active-services" | "invalid-quotas";
+export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-normal-region-count" | "disconnected-region" | "invalid-tunnel-components" | "invalid-region-definitions" | "invalid-active-services" | "invalid-quotas";
 
 export type PlacementIssue = "out-of-bounds" | "dead-region" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "farm-dam-missing" | "factory-steel-demand-missing";
 export type PlacementActivity = (placements: readonly ServicePlacement[], placement: ServicePlacement) => boolean;
@@ -42,13 +42,17 @@ export function validateLevel(level: JigsawLevel): LevelIssue[] {
     }
   }
 
-  if ([...regions.values()].some((cells) => !isConnected(cells))) {
-    issues.push("disconnected-region");
-  }
-
   const regionDefinitions = level.regionDefinitions;
   const regionNames = new Set(regions.keys());
   const normalRegions = [...regionNames].filter((region) => regionDefinitions[region]?.type === "normal");
+
+  if ([...regions].some(([region, cells]) => regionDefinitions[region]?.type !== "normal" && !isConnected(cells))) {
+    issues.push("disconnected-region");
+  }
+
+  if ([...regions].some(([region, cells]) => regionDefinitions[region]?.type === "normal" && connectedComponents(cells).length > 2)) {
+    issues.push("invalid-tunnel-components");
+  }
 
   if (
     Object.keys(regionDefinitions).length !== regionNames.size
@@ -135,6 +139,10 @@ export function legalPositions(level: JigsawLevel, placements: readonly ServiceP
   return positions;
 }
 
+export function legalServicesAt(level: JigsawLevel, placements: readonly ServicePlacement[], position: Position): ServiceType[] {
+  return SERVICE_TYPES.filter((service) => level.activeServices.includes(service) && validatePlacement(level, placements, { service, position }).length === 0);
+}
+
 export function isLevelComplete(level: JigsawLevel, placements: readonly ServicePlacement[]): boolean {
   return validateLevel(level).length === 0
     && validatePlacements(level, placements).length === 0
@@ -216,6 +224,20 @@ export function regionAt(level: JigsawLevel, position: Position): string {
   return level.regions[position.row]![position.column]!;
 }
 
+export function regionComponents(level: JigsawLevel, region: string): readonly (readonly Position[])[] {
+  const cells: Position[] = [];
+
+  for (let row = 0; row < level.size; row += 1) {
+    for (let column = 0; column < level.size; column += 1) {
+      if (level.regions[row]![column] === region) {
+        cells.push({ row, column });
+      }
+    }
+  }
+
+  return connectedComponents(cells);
+}
+
 export function regionDefinitionAt(level: JigsawLevel, position: Position): RegionDefinition {
   return level.regionDefinitions[regionAt(level, position)]!;
 }
@@ -275,37 +297,43 @@ function totalResourceRequirement(level: JigsawLevel, resource: ResourceType): n
 }
 
 function isConnected(cells: readonly Position[]): boolean {
-  if (cells.length === 0) {
-    return false;
-  }
+  return connectedComponents(cells).length === 1;
+}
 
+function connectedComponents(cells: readonly Position[]): readonly (readonly Position[])[] {
   const cellKeys = new Set(cells.map(positionKey));
-  const visited = new Set<string>();
-  const queue = [cells[0]!];
+  const unvisited = new Map(cells.map((cell) => [positionKey(cell), cell]));
+  const components: Position[][] = [];
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const currentKey = positionKey(current);
+  while (unvisited.size > 0) {
+    const first = unvisited.values().next().value as Position;
+    const component: Position[] = [];
+    const queue = [first];
+    unvisited.delete(positionKey(first));
 
-    if (visited.has(currentKey)) {
-      continue;
-    }
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      component.push(current);
 
-    visited.add(currentKey);
+      for (const neighbour of [
+        { row: current.row - 1, column: current.column },
+        { row: current.row + 1, column: current.column },
+        { row: current.row, column: current.column - 1 },
+        { row: current.row, column: current.column + 1 },
+      ]) {
+        const key = positionKey(neighbour);
 
-    for (const neighbour of [
-      { row: current.row - 1, column: current.column },
-      { row: current.row + 1, column: current.column },
-      { row: current.row, column: current.column - 1 },
-      { row: current.row, column: current.column + 1 },
-    ]) {
-      if (cellKeys.has(positionKey(neighbour)) && !visited.has(positionKey(neighbour))) {
-        queue.push(neighbour);
+        if (cellKeys.has(key) && unvisited.has(key)) {
+          unvisited.delete(key);
+          queue.push(neighbour);
+        }
       }
     }
+
+    components.push(component);
   }
 
-  return visited.size === cells.length;
+  return components;
 }
 
 function positionKey(position: Position): string {
