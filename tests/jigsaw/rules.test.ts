@@ -29,7 +29,7 @@ describe("Jigsaw service rules", () => {
     expect(generated.every(({ level }) => countSimpleLRegions(level.regions) === 0)).toBe(true);
     expect(new Set(generated.map(({ level }) => JSON.stringify(level.regions))).size).toBeGreaterThan(5);
     expect(fullProfileBoards.every(({ level }) => level.activeServices.includes("factory") && level.quotas.factory.total === 4)).toBe(true);
-    expect(fullProfileBoards.every(({ level }) => Object.values(level.regionRequirements).reduce((total, requirements) => total + (requirements.steel ?? 0), 0) === 4)).toBe(true);
+    expect(fullProfileBoards.every(({ level }) => Object.values(level.regionDefinitions).reduce((total, definition) => total + (definition.type === "normal" ? definition.requirements.steel ?? 0 : 0), 0) === 4)).toBe(true);
     expect(factoryCountBoards.every(({ level, solution }) => level.quotas.factory.total === solution.filter((placement) => placement.service === "factory").length)).toBe(true);
   });
 
@@ -59,6 +59,15 @@ describe("Jigsaw service rules", () => {
     };
 
     expect(validateLevel(disconnected)).toContain("disconnected-region");
+  });
+
+  it("keeps dead terrain out of the Queens quotas and placements", () => {
+    const deadTerrain = levelWithOneDeadCell();
+    const deadPosition = deadTerrain.regions.flatMap((row, rowIndex) => row.map((region, column) => ({ region, row: rowIndex, column }))).find((cell) => cell.region === "X")!;
+
+    expect(validateLevel(deadTerrain)).toEqual([]);
+    expect(validatePlacement(deadTerrain, [], { service: "water", position: deadPosition })).toContain("dead-region");
+    expect(unmetResourcesForRegion(deadTerrain, [], "X")).toEqual([]);
   });
 
   it("enforces row, column, region, inventory, and cell conflicts per service", () => {
@@ -111,9 +120,9 @@ describe("Jigsaw service rules", () => {
 
     const extraFoodRequired: JigsawLevel = {
       ...JIGSAW_STARTER_LEVEL,
-      regionRequirements: {
-        ...JIGSAW_STARTER_LEVEL.regionRequirements,
-        [region]: { ...JIGSAW_STARTER_LEVEL.regionRequirements[region], food: 2 },
+      regionDefinitions: {
+        ...JIGSAW_STARTER_LEVEL.regionDefinitions,
+        [region]: { type: "normal", requirements: { food: 2, water: 1, power: 1 } },
       },
     };
 
@@ -121,7 +130,7 @@ describe("Jigsaw service rules", () => {
     expect(unmetResourcesForRegion(extraFoodRequired, JIGSAW_STARTER_SOLUTION, region)).toEqual(["food"]);
     expect(isLevelComplete(extraFoodRequired, JIGSAW_STARTER_SOLUTION)).toBe(false);
 
-    expect(validateLevel({ ...JIGSAW_STARTER_LEVEL, regionRequirements: {} })).toContain("invalid-region-requirements");
+    expect(validateLevel({ ...JIGSAW_STARTER_LEVEL, regionDefinitions: {} })).toContain("invalid-region-definitions");
   });
 
   it("activates Factory Steel production from adjacent Power and Water", () => {
@@ -192,4 +201,24 @@ function firstPositionInRegion(level: JigsawLevel, region: string): ServicePlace
   }
 
   throw new Error(`Expected a cell in district ${region}.`);
+}
+
+function levelWithOneDeadCell(): JigsawLevel {
+  for (let row = 0; row < JIGSAW_STARTER_LEVEL.size; row += 1) {
+    for (let column = 0; column < JIGSAW_STARTER_LEVEL.size; column += 1) {
+      const regions = JIGSAW_STARTER_LEVEL.regions.map((regionRow) => [...regionRow]);
+      regions[row]![column] = "X";
+      const level: JigsawLevel = {
+        ...JIGSAW_STARTER_LEVEL,
+        regions,
+        regionDefinitions: { ...JIGSAW_STARTER_LEVEL.regionDefinitions, X: { type: "dead" } },
+      };
+
+      if (validateLevel(level).length === 0) {
+        return level;
+      }
+    }
+  }
+
+  throw new Error("Expected a cell that can become connected dead terrain.");
 }

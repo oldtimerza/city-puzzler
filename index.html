@@ -22,6 +22,7 @@
           <div id="start-menu-actions" class="start-menu-actions">
             <button id="new-game" class="menu-button primary" type="button">New chord</button>
             <button id="open-practice" class="menu-button" type="button">Tutorial</button>
+            <button id="open-experimental-editor" class="menu-button" type="button">Experimental editor</button>
             <button id="open-help" class="menu-button" type="button" aria-expanded="false" aria-controls="help-panel">Help</button>
           </div>
 
@@ -99,6 +100,20 @@
             <p>Click an empty cell to choose from the symbols that can legally go there. Click a placed symbol to remove it. Use <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
             <button id="close-help" class="menu-button close-help" type="button">Back</button>
           </section>
+        </div>
+      </section>
+
+      <section id="experimental-editor-screen" class="experimental-editor-screen" hidden aria-label="Experimental level editor">
+        <header class="experimental-editor-header">
+          <div>
+            <p class="eyebrow">Experimental lab</p>
+            <h2>Region workbench</h2>
+          </div>
+          <button id="back-from-experimental-editor" class="menu-button" type="button">Back to menu</button>
+        </header>
+        <div class="experimental-editor-layout">
+          <main id="experimental-editor-board" class="experimental-editor-canvas" aria-label="Editable level board"></main>
+          <aside id="experimental-editor-tools" class="experimental-editor-tools" aria-label="Level editor tools"></aside>
         </div>
       </section>
 

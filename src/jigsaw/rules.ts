@@ -1,9 +1,9 @@
 import { samePosition, type Position } from "./position.js";
-import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
+import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type RegionDefinition, type RegionResourceRequirements, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
-export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-region-size" | "disconnected-region" | "invalid-region-requirements" | "invalid-active-services" | "invalid-quotas";
+export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-normal-region-count" | "disconnected-region" | "invalid-region-definitions" | "invalid-active-services" | "invalid-quotas";
 
-export type PlacementIssue = "out-of-bounds" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "farm-dam-missing" | "factory-steel-demand-missing";
+export type PlacementIssue = "out-of-bounds" | "dead-region" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "farm-dam-missing" | "factory-steel-demand-missing";
 export type PlacementActivity = (placements: readonly ServicePlacement[], placement: ServicePlacement) => boolean;
 
 export function validateLevel(level: JigsawLevel): LevelIssue[] {
@@ -42,25 +42,26 @@ export function validateLevel(level: JigsawLevel): LevelIssue[] {
     }
   }
 
-  if (regions.size !== level.size || [...regions.values()].some((cells) => cells.length !== level.size)) {
-    issues.push("invalid-region-size");
-  }
-
   if ([...regions.values()].some((cells) => !isConnected(cells))) {
     issues.push("disconnected-region");
   }
 
-  const regionRequirements = level.regionRequirements;
+  const regionDefinitions = level.regionDefinitions;
   const regionNames = new Set(regions.keys());
+  const normalRegions = [...regionNames].filter((region) => regionDefinitions[region]?.type === "normal");
 
   if (
-    Object.keys(regionRequirements).length !== regionNames.size
-    || [...regionNames].some((region) => !hasValidResourceRequirements(regionRequirements[region]))
-    || Object.keys(regionRequirements).some((region) => !regionNames.has(region))
+    Object.keys(regionDefinitions).length !== regionNames.size
+    || [...regionNames].some((region) => !hasValidRegionDefinition(regionDefinitions[region]))
+    || Object.keys(regionDefinitions).some((region) => !regionNames.has(region))
     || !resourceRequirementsMatchActiveServices(level)
     || totalResourceRequirement(level, "steel") !== level.quotas.factory.total
   ) {
-    issues.push("invalid-region-requirements");
+    issues.push("invalid-region-definitions");
+  }
+
+  if (normalRegions.length !== level.size) {
+    issues.push("invalid-normal-region-count");
   }
 
   return issues;
@@ -72,6 +73,10 @@ export function validatePlacement(level: JigsawLevel, placements: readonly Servi
   if (!isInBounds(level, candidate.position)) {
     issues.push("out-of-bounds");
     return issues;
+  }
+
+  if (regionDefinitionAt(level, candidate.position).type === "dead") {
+    issues.push("dead-region");
   }
 
   if (placements.some((placement) => samePosition(placement.position, candidate.position))) {
@@ -103,7 +108,7 @@ export function validatePlacement(level: JigsawLevel, placements: readonly Servi
     issues.push("generator-water-conflict");
   }
 
-  if (candidate.service === "factory" && (level.regionRequirements[regionAt(level, candidate.position)]?.steel ?? 0) === 0) {
+  if (candidate.service === "factory" && (requirementsForRegion(level, regionAt(level, candidate.position)).steel ?? 0) === 0) {
     issues.push("factory-steel-demand-missing");
   }
 
@@ -134,12 +139,12 @@ export function isLevelComplete(level: JigsawLevel, placements: readonly Service
   return validateLevel(level).length === 0
     && validatePlacements(level, placements).length === 0
     && unsuppliedFarms(placements).length === 0
-    && [...new Set(level.regions.flat())].every((region) => unmetResourcesForRegion(level, placements, region).length === 0)
+    && [...new Set(level.regions.flat())].filter((region) => level.regionDefinitions[region]?.type === "normal").every((region) => unmetResourcesForRegion(level, placements, region).length === 0)
     && level.activeServices.every((service) => countService(placements, service) === level.quotas[service].total);
 }
 
 export function unmetResourcesForRegion(level: JigsawLevel, placements: readonly ServicePlacement[], region: string, isActive: PlacementActivity = isPlacementActive): ResourceType[] {
-  const requirements = level.regionRequirements[region] ?? {};
+  const requirements = requirementsForRegion(level, region);
   const supplied = resourceSupplyForRegion(level, placements, region, isActive);
   const unmet: ResourceType[] = [];
 
@@ -211,6 +216,15 @@ export function regionAt(level: JigsawLevel, position: Position): string {
   return level.regions[position.row]![position.column]!;
 }
 
+export function regionDefinitionAt(level: JigsawLevel, position: Position): RegionDefinition {
+  return level.regionDefinitions[regionAt(level, position)]!;
+}
+
+export function requirementsForRegion(level: JigsawLevel, region: string): RegionResourceRequirements {
+  const definition = level.regionDefinitions[region];
+  return definition?.type === "normal" ? definition.requirements : {};
+}
+
 function countService(placements: readonly ServicePlacement[], service: ServiceType): number {
   return placements.filter((placement) => placement.service === service).length;
 }
@@ -227,10 +241,14 @@ function countServiceInRegion(level: JigsawLevel, placements: readonly ServicePl
   return placements.filter((placement) => placement.service === service && regionAt(level, placement.position) === region).length;
 }
 
-function hasValidResourceRequirements(requirements: JigsawLevel["regionRequirements"][string] | undefined): boolean {
-  return requirements !== undefined
-    && Object.keys(requirements).length > 0
-    && Object.entries(requirements).every(([resource, amount]) => RESOURCE_TYPES.includes(resource as ResourceType) && Number.isInteger(amount) && amount > 0);
+function hasValidRegionDefinition(definition: RegionDefinition | undefined): boolean {
+  return definition !== undefined
+    && (definition.type === "dead" || (definition.type === "normal" && hasValidResourceRequirements(definition.requirements)));
+}
+
+function hasValidResourceRequirements(requirements: RegionResourceRequirements): boolean {
+  return Object.keys(requirements).length > 0
+    && Object.entries(requirements).every(([resource, amount]) => RESOURCE_TYPES.includes(resource as ResourceType) && typeof amount === "number" && Number.isInteger(amount) && amount > 0);
 }
 
 function hasValidQuota(quota: ServiceQuota | undefined, size: number): quota is ServiceQuota {
@@ -249,11 +267,11 @@ function hasValidQuota(quota: ServiceQuota | undefined, size: number): quota is 
 function resourceRequirementsMatchActiveServices(level: JigsawLevel): boolean {
   const activeResources = new Set(level.activeServices.map((service) => SERVICE_RESOURCES[service]));
 
-  return Object.values(level.regionRequirements).every((requirements) => Object.keys(requirements).every((resource) => activeResources.has(resource as ResourceType)));
+  return Object.values(level.regionDefinitions).every((definition) => definition.type === "dead" || Object.keys(definition.requirements).every((resource) => activeResources.has(resource as ResourceType)));
 }
 
 function totalResourceRequirement(level: JigsawLevel, resource: ResourceType): number {
-  return Object.values(level.regionRequirements).reduce((total, requirements) => total + (requirements[resource] ?? 0), 0);
+  return Object.values(level.regionDefinitions).reduce((total, definition) => total + (definition.type === "normal" ? definition.requirements[resource] ?? 0 : 0), 0);
 }
 
 function isConnected(cells: readonly Position[]): boolean {

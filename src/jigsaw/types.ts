@@ -15,6 +15,10 @@ export const SERVICE_RESOURCES: Readonly<Record<ServiceType, ResourceType>> = {
 
 export type RegionResourceRequirements = Readonly<Partial<Record<ResourceType, number>>>;
 
+export type RegionDefinition =
+  | Readonly<{ type: "normal"; requirements: RegionResourceRequirements }>
+  | Readonly<{ type: "dead" }>;
+
 export interface ServiceQuota {
   readonly total: number;
   readonly maxPerRow: number;
@@ -30,7 +34,7 @@ export interface ServicePlacement {
 export interface JigsawLevel {
   readonly size: number;
   readonly regions: readonly (readonly string[])[];
-  readonly regionRequirements: Readonly<Record<string, RegionResourceRequirements>>;
+  readonly regionDefinitions: Readonly<Record<string, RegionDefinition>>;
   readonly activeServices: readonly ServiceType[];
   readonly quotas: Readonly<Record<ServiceType, ServiceQuota>>;
 }

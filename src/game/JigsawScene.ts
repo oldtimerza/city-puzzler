@@ -2,7 +2,7 @@ import Phaser from "phaser";
 
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
 import { samePosition, type Position } from "../jigsaw/position.js";
-import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
+import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, regionDefinitionAt, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
 import { SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
 const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
@@ -291,11 +291,19 @@ export class JigsawScene extends Phaser.Scene {
   private renderCell(position: Position, legalCells: ReadonlySet<string>): void {
     const { x, y } = this.cellOrigin(position);
     const region = this.level.regions[position.row]![position.column]!;
-    const fill = REGION_COLORS[(region.charCodeAt(0) - "A".charCodeAt(0)) % REGION_COLORS.length]!;
+    const dead = regionDefinitionAt(this.level, position).type === "dead";
+    const fill = dead ? 0x7a817b : REGION_COLORS[(region.charCodeAt(0) - "A".charCodeAt(0)) % REGION_COLORS.length]!;
     const legal = legalCells.has(positionKey(position));
     const cell = this.add
       .rectangle(x + this.cellSize / 2, y + this.cellSize / 2, this.cellSize - 2, this.cellSize - 2, legal ? 0xbdf0b5 : fill)
       .setStrokeStyle(1, 0x53676a, 0.8);
+
+    if (dead) {
+      const hatch = this.add.graphics();
+      hatch.lineStyle(1, 0xe5e1d7, 0.38);
+      hatch.lineBetween(x + 7, y + this.cellSize - 7, x + this.cellSize - 7, y + 7);
+      return;
+    }
 
     cell.setInteractive({ useHandCursor: true });
     cell.on("pointerdown", () => this.handleCellSelection(position));
@@ -807,6 +815,8 @@ function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): 
   switch (issue) {
     case "out-of-bounds":
       return "That cell is outside the grid.";
+    case "dead-region":
+      return "Dead terrain cannot hold a symbol.";
     case "occupied-cell":
       return "Only one symbol may occupy a cell.";
     case "inventory-exhausted":

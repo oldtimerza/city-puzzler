@@ -8,12 +8,11 @@ This is the canonical ruleset for Chord. New Chord uses one uniquely solvable `6
 
 A board is a square `N x N` grid. New Chord uses `N = 6`; tutorial boards may use other sizes.
 
-Every cell belongs to exactly one region. A valid `N x N` board has exactly `N` regions, each with exactly `N` cells. Regions are disjoint, cover the board, and are connected through shared edges.
+Every cell belongs to exactly one region. A standard `N x N` board has exactly `N` normal regions. Regions are disjoint, cover the board, and are connected through shared edges. A level may add connected dead regions, whose cells are blocked terrain; dead regions do not count toward the `N` normal regions and may have any positive size.
 
 ```text
 G = { (r, c) | 1 <= r, c <= N }
 R = { R1, R2, ..., RN }
-|Ri| = N
 union(Ri) = G
 Ri intersect Rj = empty, for i != j
 ```
@@ -42,7 +41,7 @@ The resulting `N` placements of each active symbol may occupy different cells. E
 
 ## Region Requirements
 
-Each region carries a non-empty multiset of symbol requirements. A placed symbol fulfils a matching requirement in the region that contains it. The displayed requirement marks are abstract symbols, not an external theme or simulation layer.
+Each normal region carries a non-empty multiset of symbol requirements. A placed symbol fulfils a matching requirement in the normal region that contains it. Dead regions carry no requirements and cannot contain symbols. The displayed requirement marks are abstract symbols, not an external theme or simulation layer.
 
 The standard profile requires one Circle, Diamond, and Triangle in every region. Square requirements occur only in selected regions, and the total number of Square requirements equals the Square quota. A region is complete when all of its marks are fulfilled.
 
@@ -87,7 +86,7 @@ The New Chord difficulties differ only in immutable clue count, and every genera
 
 ## Completion And Generation
 
-A board is complete when it satisfies its quotas, region requirements, cell exclusivity, and applicable relationship rules.
+A board is complete when it satisfies its quotas, normal-region requirements, cell exclusivity, and applicable relationship rules. Dead terrain is ignored by completion.
 
 Generated boards construct a valid full placement, derive immutable clues, and accept the result only when the solver finds exactly one solution. A known generated placement alone is not evidence of uniqueness.
 

@@ -1,7 +1,7 @@
 import type { Position } from "./position.js";
 import { isFactorySupplied, isLevelComplete, validateLevel, validatePlacement } from "./rules.js";
 import { countSolutions } from "./solver.js";
-import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionResourceRequirements, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
+import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionDefinition, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
 export const BOARD_SIZES = [5, 6, 8] as const;
 export type BoardSize = (typeof BOARD_SIZES)[number];
@@ -47,7 +47,7 @@ export function generateJigsawLevel(
     const factoryPlacementLevel: JigsawLevel = {
       size,
       regions: candidateRegions,
-      regionRequirements: resourceRequirementsForRegions(candidateRegions, activeServices, factoryCandidateRegions, quotas.factory.total),
+      regionDefinitions: regionDefinitionsFor(candidateRegions, activeServices, factoryCandidateRegions, quotas.factory.total),
       activeServices,
       quotas,
     };
@@ -64,7 +64,7 @@ export function generateJigsawLevel(
     const candidateLevel: JigsawLevel = {
       size,
       regions: candidateRegions,
-      regionRequirements: resourceRequirementsForRegions(candidateRegions, activeServices, candidateSteelRegions, quotas.factory.total),
+      regionDefinitions: regionDefinitionsFor(candidateRegions, activeServices, candidateSteelRegions, quotas.factory.total),
       activeServices,
       quotas,
     };
@@ -84,7 +84,7 @@ export function generateJigsawLevel(
   const level: JigsawLevel = {
     size,
     regions: transformRegions(regions, size, transform),
-    regionRequirements: resourceRequirementsForRegions(regions, activeServices, selectedSteelRegions, quotas.factory.total),
+    regionDefinitions: regionDefinitionsFor(regions, activeServices, selectedSteelRegions, quotas.factory.total),
     activeServices,
     quotas,
   };
@@ -151,13 +151,13 @@ function reduceToUniqueClues(
   return clues;
 }
 
-function resourceRequirementsForRegions(
+function regionDefinitionsFor(
   regions: readonly (readonly string[])[],
   activeServices: readonly ServiceType[],
   steelRegions: readonly string[],
   factorySteelDemandCount: number,
-): Readonly<Record<string, RegionResourceRequirements>> {
-  const requirements: Record<string, RegionResourceRequirements> = {};
+): Readonly<Record<string, RegionDefinition>> {
+  const definitions: Record<string, RegionDefinition> = {};
   const steelDemandRegions = new Set(
     steelRegions.length > 0
       ? steelRegions
@@ -167,13 +167,16 @@ function resourceRequirementsForRegions(
   );
 
   for (const region of new Set(regions.flat())) {
-    requirements[region] = {
-      ...Object.fromEntries(activeServices.filter((service) => service !== "factory").map((service) => [SERVICE_RESOURCES[service], 1])),
-      ...(steelDemandRegions.has(region) ? { steel: 1 } : {}),
+    definitions[region] = {
+      type: "normal",
+      requirements: {
+        ...Object.fromEntries(activeServices.filter((service) => service !== "factory").map((service) => [SERVICE_RESOURCES[service], 1])),
+        ...(steelDemandRegions.has(region) ? { steel: 1 } : {}),
+      },
     };
   }
 
-  return requirements;
+  return definitions;
 }
 
 export function jigsawLevelSignature(puzzle: Pick<JigsawPuzzle, "level" | "solution">): string {

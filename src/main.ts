@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 
 import { CAMPAIGN_LEVELS, type CampaignLevel } from "./content/campaign-levels.js";
+import { mountExperimentalEditor } from "./editor/ExperimentalEditor.js";
 import { JigsawScene, type JigsawViewState } from "./game/JigsawScene.js";
 import { generateChordLevel, type ChordDifficulty } from "./jigsaw/generator.js";
 import { SERVICE_TYPES, type ServiceType } from "./jigsaw/types.js";
@@ -23,6 +24,7 @@ const startMenu = byId<HTMLElement>("start-menu");
 const startMenuActions = byId<HTMLElement>("start-menu-actions");
 const newGame = byId<HTMLButtonElement>("new-game");
 const openPractice = byId<HTMLButtonElement>("open-practice");
+const openExperimentalEditor = byId<HTMLButtonElement>("open-experimental-editor");
 const openHelp = byId<HTMLButtonElement>("open-help");
 const helpPanel = byId<HTMLElement>("help-panel");
 const closeHelp = byId<HTMLButtonElement>("close-help");
@@ -30,6 +32,10 @@ const campaignPicker = byId<HTMLElement>("campaign-picker");
 const campaignLevels = byId<HTMLDivElement>("campaign-levels");
 const backFromCampaign = byId<HTMLButtonElement>("back-from-campaign");
 const resetTutorialProgress = byId<HTMLButtonElement>("reset-tutorial-progress");
+const experimentalEditorScreen = byId<HTMLElement>("experimental-editor-screen");
+const experimentalEditorBoard = byId<HTMLElement>("experimental-editor-board");
+const experimentalEditorTools = byId<HTMLElement>("experimental-editor-tools");
+const backFromExperimentalEditor = byId<HTMLButtonElement>("back-from-experimental-editor");
 const difficultyPicker = byId<HTMLElement>("difficulty-picker");
 const backFromDifficulty = byId<HTMLButtonElement>("back-from-difficulty");
 const difficultyChoices = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-difficulty]"));
@@ -73,11 +79,13 @@ showSolution.addEventListener("click", () => scene().revealSolution());
 reset.addEventListener("click", () => scene().reset());
 newGame.addEventListener("click", showDifficultyPicker);
 openPractice.addEventListener("click", showCampaignPicker);
+openExperimentalEditor.addEventListener("click", showExperimentalEditor);
 openHelp.addEventListener("click", openHelpPanel);
 closeHelp.addEventListener("click", closeHelpPanel);
 backFromCampaign.addEventListener("click", showStartActions);
 backFromDifficulty.addEventListener("click", showStartActions);
 resetTutorialProgress.addEventListener("click", resetTutorialProgressForPlaytest);
+backFromExperimentalEditor.addEventListener("click", showStartActions);
 startGameButton.addEventListener("click", startGame);
 dismissLevelTip.addEventListener("click", hideLevelTip);
 gameHelp.addEventListener("click", showGameHelp);
@@ -87,6 +95,7 @@ for (const choice of difficultyChoices) {
 }
 
 renderCampaignLevels();
+mountExperimentalEditor(experimentalEditorBoard, experimentalEditorTools);
 attachSceneEvents();
 
 function attachSceneEvents(): void {
@@ -170,6 +179,7 @@ function showCampaignPicker(): void {
   helpPanel.hidden = true;
   difficultyPicker.hidden = true;
   campaignPicker.hidden = false;
+  experimentalEditorScreen.hidden = true;
   renderCampaignLevels();
   campaignLevels.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
 }
@@ -179,22 +189,33 @@ function showDifficultyPicker(): void {
   startMenuActions.hidden = true;
   helpPanel.hidden = true;
   campaignPicker.hidden = true;
+  experimentalEditorScreen.hidden = true;
   difficultyPicker.hidden = false;
   difficultyChoices.find((choice) => choice.dataset.difficulty === selectedDifficulty)?.focus();
 }
 
 function showStartActions(): void {
+  startMenu.hidden = false;
   campaignPicker.hidden = true;
   difficultyPicker.hidden = true;
+  experimentalEditorScreen.hidden = true;
   helpPanel.hidden = true;
   startMenuActions.hidden = false;
   newGame.focus();
+}
+
+function showExperimentalEditor(): void {
+  hideLevelTip();
+  startMenu.hidden = true;
+  experimentalEditorScreen.hidden = false;
+  experimentalEditorTools.querySelector<HTMLButtonElement>(".editor-brush.selected")?.focus();
 }
 
 function showMainMenu(): void {
   hideLevelTip();
   helpOpenedFromGame = false;
   startMenu.hidden = false;
+  experimentalEditorScreen.hidden = true;
   showStartActions();
 }
 
@@ -294,6 +315,7 @@ function showHelpPanel(): void {
   startMenuActions.hidden = true;
   campaignPicker.hidden = true;
   difficultyPicker.hidden = true;
+  experimentalEditorScreen.hidden = true;
   helpPanel.hidden = false;
   openHelp.setAttribute("aria-expanded", "true");
   closeHelp.focus();
