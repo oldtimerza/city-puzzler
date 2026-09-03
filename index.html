@@ -57,6 +57,7 @@
           </section>
 
           <section id="help-panel" class="help-panel" hidden aria-label="How to play">
+            <button id="close-help" class="help-close" type="button" aria-label="Close help">&times;</button>
             <h3>Goal</h3>
             <p>Place every active symbol once in each row, column, and district. Floating requirement markers point to districts that still need symbols. Tutorial levels introduce one relationship at a time.</p>
             <h3>Rules</h3>
@@ -100,7 +101,6 @@
             </div>
             <h3>How to play</h3>
             <p>Click an empty cell to choose from the symbols that can legally go there. Use Show placements to display every currently legal symbol, Resolve singles to fill the first single-option cell, or Requirements to switch between all callouts and hover-only callouts. Click a placed symbol to remove it. Use <kbd>T</kbd> for one highlighted hint, and Undo or Redo to revise a plan.</p>
-            <button id="close-help" class="menu-button close-help" type="button">Back</button>
           </section>
         </div>
       </section>
@@ -124,7 +124,7 @@
           <p id="level-tip-step" class="eyebrow">Practice lesson</p>
           <h2 id="level-tip-title"></h2>
           <p id="level-tip-copy"></p>
-          <button id="dismiss-level-tip" class="menu-button primary" type="button">Start planning</button>
+          <button id="dismiss-level-tip" class="menu-button primary" type="button">Start</button>
         </div>
       </section>
 
@@ -147,12 +147,14 @@
             <button id="main-menu" class="control-button levels" type="button">Main menu</button>
             <button id="game-help" class="control-button" type="button">Help</button>
             <button id="refresh" class="control-button refresh" type="button">Refresh puzzle</button>
-            <button id="undo" class="control-button" type="button">Undo</button>
+              <button id="undo" class="control-button" type="button">Undo</button>
               <button id="redo" class="control-button" type="button">Redo</button>
-              <button id="hint" class="control-button" type="button" aria-keyshortcuts="T">Hint (T)</button>
-              <button id="show-placements" class="control-button" type="button" aria-pressed="false">Show placements</button>
+              <button id="hint" class="control-button" type="button" aria-keyshortcuts="T">Hint</button>
               <button id="resolve-singles" class="control-button" type="button">Resolve singles</button>
-              <button id="requirement-display" class="control-button" type="button" aria-pressed="false">Requirements: always</button>
+              <div class="control-toggles" aria-label="Display settings">
+                <label class="control-toggle"><input id="show-placements" type="checkbox" checked> Show placement options</label>
+                <label class="control-toggle"><input id="requirement-display" type="checkbox"> Show requirements on hover</label>
+              </div>
               <button id="show-solution" class="control-button solution" type="button">Show solution</button>
             <button id="next-level" class="control-button next-level" type="button" hidden>Next level</button>
             <button id="reset" class="control-button danger" type="button">Reset board</button>

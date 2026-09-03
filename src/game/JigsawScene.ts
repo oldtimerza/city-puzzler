@@ -60,7 +60,7 @@ export class JigsawScene extends Phaser.Scene {
   private hint: ServicePlacement | null = null;
   private showSolutionPreview = false;
   private solutionRevealed = false;
-  private showPlacementCandidates = false;
+  private showPlacementCandidates = true;
   private requirementsOnHover = false;
   private status = "Click an empty cell to choose a symbol.";
   private boardLeft = 0;
@@ -73,6 +73,15 @@ export class JigsawScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor("#f4f0e6");
+    if (this.game.renderer.type === Phaser.WEBGL) {
+      Phaser.Actions.AddEffectBloom(this.cameras.main, {
+        threshold: 0.62,
+        blurRadius: 1.35,
+        blurSteps: 2,
+        blurQuality: 0,
+        blendAmount: 0.22,
+      });
+    }
     this.scale.on(Phaser.Scale.Events.RESIZE, this.renderBoard, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.renderBoard, this));
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.dismissPlacementMenuOutsideBoard, this);
@@ -254,6 +263,9 @@ export class JigsawScene extends Phaser.Scene {
         this.selectedService = null;
         this.placementMenuPosition = null;
         this.status = `Placed the only available ${symbolLabel(single.service).toLowerCase()}.`;
+        this.renderBoard();
+        this.publishState();
+        return;
       }
     }
 
@@ -353,7 +365,6 @@ export class JigsawScene extends Phaser.Scene {
     this.renderDistrictRequirementCallouts(displayedPlacements);
 
     this.renderPlacementMenu();
-
   }
 
   private renderCell(position: Position, legalCells: ReadonlySet<string>): void {
@@ -602,7 +613,7 @@ export class JigsawScene extends Phaser.Scene {
     const end = this.cellCenter(supplier.position);
     const link = this.add.graphics();
 
-    link.lineStyle(Math.max(4, Math.round(this.cellSize * 0.075)), SERVICE_COLORS[supplier.service], 0.58);
+    link.lineStyle(Math.max(4, Math.round(this.cellSize * 0.075)), SERVICE_COLORS[supplier.service], 0.62);
     link.lineBetween(start.x, start.y, end.x, end.y);
     link.lineStyle(1, 0x30474a, 0.72);
     link.lineBetween(start.x, start.y, end.x, end.y);
