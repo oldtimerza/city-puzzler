@@ -52,6 +52,7 @@ export interface JigsawViewState {
   readonly selectedService: ServiceType | null;
   readonly activeServices: readonly ServiceType[];
   readonly placements: readonly ServicePlacement[];
+  readonly placementStack: readonly ServicePlacement[];
   readonly quotas: Readonly<Record<ServiceType, ServiceQuota>>;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
@@ -337,6 +338,7 @@ export class JigsawScene extends Phaser.Scene {
       selectedService: this.selectedService,
       activeServices: this.level.activeServices,
       placements: this.placements,
+      placementStack: this.placements.filter((placement) => !this.isClue(placement.position)),
       quotas: this.level.quotas,
       canUndo: this.history.length > 0,
       canRedo: this.future.length > 0,
@@ -375,6 +377,7 @@ export class JigsawScene extends Phaser.Scene {
         letterSpacing: 1.5,
       })
       .setOrigin(0, 0.5);
+    this.renderBoardCoordinates();
 
     for (let row = 0; row < this.level.size; row += 1) {
       for (let column = 0; column < this.level.size; column += 1) {
@@ -454,6 +457,16 @@ export class JigsawScene extends Phaser.Scene {
         }
       }
     });
+  }
+
+  private renderBoardCoordinates(): void {
+    const style = { fontFamily: "Avenir Next, Trebuchet MS, sans-serif", fontSize: `${Math.max(11, this.cellSize * 0.2)}px`, fontStyle: "bold", color: "#617174" };
+    for (let column = 0; column < this.level.size; column += 1) {
+      this.add.text(this.boardLeft + (column + 0.5) * this.cellSize, this.boardTop - 15, String.fromCharCode(65 + column), style).setOrigin(0.5);
+    }
+    for (let row = 0; row < this.level.size; row += 1) {
+      this.add.text(this.boardLeft - 15, this.boardTop + (row + 0.5) * this.cellSize, String(row + 1), style).setOrigin(0.5);
+    }
   }
 
   private renderDistrictBorders(): void {
@@ -1027,9 +1040,8 @@ export class JigsawScene extends Phaser.Scene {
       this.status = "That starting clue is fixed.";
       clickedLockedClue = true;
     } else if (existingIndex >= 0) {
-      this.commit(this.placements.filter((_, index) => index !== existingIndex));
-      this.placementMenuPosition = null;
-      this.status = "Symbol removed.";
+      this.removePlacement(position);
+      return;
     } else {
       this.openPlacementMenu(position);
     }
@@ -1040,6 +1052,24 @@ export class JigsawScene extends Phaser.Scene {
       this.flashLockedClue(position);
     }
 
+    this.publishState();
+  }
+
+  removePlacement(position: Position): void {
+    this.placementMenuPosition = null;
+    const existingIndex = this.placements.findIndex((placement) => samePosition(placement.position, position));
+    if (this.solutionRevealed) {
+      this.status = "The solution has been revealed. Start a new practice board to play again.";
+    } else if (existingIndex < 0) {
+      this.status = "That symbol is no longer on the board.";
+    } else if (this.isClue(position)) {
+      this.status = "That starting clue is fixed.";
+    } else {
+      this.commit(this.placements.filter((_, index) => index !== existingIndex));
+      this.status = "Symbol removed.";
+      this.audio.playRemoval();
+    }
+    this.renderBoard();
     this.publishState();
   }
 

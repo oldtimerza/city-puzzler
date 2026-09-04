@@ -23,6 +23,7 @@
             <button id="new-game" class="menu-button primary" type="button">New chord</button>
             <button id="open-practice" class="menu-button" type="button">Tutorial</button>
             <button id="open-experimental-editor" class="menu-button" type="button">Experimental editor</button>
+            <button id="open-puzzle-catalog" class="menu-button" type="button">Puzzle catalog</button>
             <button id="open-help" class="menu-button" type="button" aria-expanded="false" aria-controls="help-panel">Help</button>
           </div>
 
@@ -119,6 +120,17 @@
         </div>
       </section>
 
+      <section id="puzzle-catalog-screen" class="puzzle-catalog-screen" hidden aria-label="Puzzle catalog browser">
+        <header class="experimental-editor-header">
+          <div>
+            <p class="eyebrow">Authoring library</p>
+            <h2>Puzzle catalog</h2>
+          </div>
+          <button id="back-from-puzzle-catalog" class="menu-button" type="button">Back to menu</button>
+        </header>
+        <main id="puzzle-catalog-browser" class="puzzle-catalog-browser" aria-label="Certified puzzle catalog"></main>
+      </section>
+
       <section id="level-tip" class="level-tip" role="dialog" aria-modal="true" aria-labelledby="level-tip-title" hidden>
         <div class="level-tip-card">
           <p id="level-tip-step" class="eyebrow">Practice lesson</p>
@@ -143,11 +155,20 @@
             </div>
           </section>
 
+          <section class="placement-stack-section" aria-label="Placement stack">
+            <div class="section-heading">
+              <h2>Placement stack</h2>
+              <span id="placement-stack-count">0 moves</span>
+            </div>
+            <ol id="placement-stack" class="placement-stack"></ol>
+            <p id="placement-stack-empty" class="placement-stack-empty">Your placed symbols appear here. Undo removes the latest move.</p>
+          </section>
+
           <section class="control-section utility-controls" aria-label="Board actions">
             <button id="main-menu" class="control-button levels" type="button">Main menu</button>
             <button id="game-help" class="control-button" type="button">Help</button>
             <button id="refresh" class="control-button refresh" type="button">Refresh puzzle</button>
-              <button id="undo" class="control-button" type="button">Undo</button>
+              <button id="undo" class="control-button" type="button">Undo last placement</button>
               <button id="redo" class="control-button" type="button">Redo</button>
               <button id="hint" class="control-button" type="button" aria-keyshortcuts="T">Hint</button>
               <button id="resolve-singles" class="control-button" type="button">Resolve singles</button>
@@ -155,6 +176,7 @@
                 <label class="control-toggle"><input id="show-placements" type="checkbox" checked> Show placement options</label>
                 <label class="control-toggle"><input id="requirement-display" type="checkbox"> Show requirements on hover</label>
                 <label class="control-toggle"><input id="sound-effects" type="checkbox" checked> Sound effects</label>
+                <label class="control-toggle"><input id="background-music" type="checkbox" checked> Harp music</label>
               </div>
               <button id="show-solution" class="control-button solution" type="button">Show solution</button>
             <button id="next-level" class="control-button next-level" type="button" hidden>Next level</button>

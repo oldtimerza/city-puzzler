@@ -1,0 +1,384 @@
+{
+  "version": 3,
+  "config": {
+    "seedStart": 1,
+    "candidateCount": 1,
+    "analysisNodeLimit": 25000
+  },
+  "processedCandidates": [
+    "base:1"
+  ],
+  "puzzles": [
+    {
+      "id": "base:1:41f4e40c",
+      "candidateId": "base:1",
+      "seed": 1,
+      "boardSignature": "[6,[[\"R0\",\"R0\",\"R0\",\"R0\",\"R1\",\"R1\"],[\"R0\",\"R2\",\"R2\",\"R1\",\"R1\",\"R1\"],[\"R2\",\"R2\",\"R0\",\"R3\",\"R3\",\"R1\"],[\"R2\",\"R4\",\"R5\",\"R5\",\"R3\",\"R3\"],[\"R2\",\"R4\",\"R5\",\"R3\",\"R3\",\"R4\"],[\"R4\",\"R4\",\"R5\",\"R5\",\"R5\",\"R4\"]],[[\"R0\",[\"normal\",[[\"food\",1],[\"water\",1],[\"power\",1],[\"steel\",1],[\"bond\",0]],false]],[\"R1\",[\"normal\",[[\"food\",1],[\"water\",1],[\"power\",1],[\"steel\",0],[\"bond\",0]],false]],[\"R2\",[\"normal\",[[\"food\",1],[\"water\",1],[\"power\",1],[\"steel\",1],[\"bond\",0]],false]],[\"R3\",[\"normal\",[[\"food\",1],[\"water\",1],[\"power\",1],[\"steel\",0],[\"bond\",0]],false]],[\"R4\",[\"normal\",[[\"food\",1],[\"water\",1],[\"power\",1],[\"steel\",1],[\"bond\",0]],false]],[\"R5\",[\"normal\",[[\"food\",1],[\"water\",1],[\"power\",1],[\"steel\",1],[\"bond\",0]],false]]],[\"factory\",\"farm\",\"generator\",\"water\"],[[\"factory\",4,1,1,1],[\"farm\",6,1,1,1],[\"generator\",6,1,1,1],[\"twin\",0,0,0,0],[\"water\",6,1,1,1]],[[\"factory\",[1,0]],[\"factory\",[2,1]],[\"factory\",[4,5]],[\"factory\",[5,4]],[\"farm\",[0,3]],[\"farm\",[1,5]],[\"farm\",[2,4]],[\"farm\",[3,1]],[\"farm\",[4,0]],[\"farm\",[5,2]],[\"generator\",[0,5]],[\"generator\",[1,1]],[\"generator\",[2,2]],[\"generator\",[3,3]],[\"generator\",[4,4]],[\"generator\",[5,0]],[\"water\",[0,2]],[\"water\",[1,4]],[\"water\",[2,0]],[\"water\",[3,5]],[\"water\",[4,1]],[\"water\",[5,3]]],[]]",
+      "boardHash": "41f4e40c",
+      "base": {
+        "seed": 1,
+        "level": {
+          "size": 6,
+          "regions": [
+            [
+              "D",
+              "B",
+              "B",
+              "B",
+              "C",
+              "C"
+            ],
+            [
+              "D",
+              "D",
+              "D",
+              "B",
+              "B",
+              "C"
+            ],
+            [
+              "A",
+              "A",
+              "A",
+              "C",
+              "B",
+              "C"
+            ],
+            [
+              "A",
+              "E",
+              "A",
+              "E",
+              "F",
+              "C"
+            ],
+            [
+              "A",
+              "E",
+              "E",
+              "E",
+              "F",
+              "F"
+            ],
+            [
+              "D",
+              "D",
+              "E",
+              "F",
+              "F",
+              "F"
+            ]
+          ],
+          "regionDefinitions": {
+            "D": {
+              "type": "normal",
+              "requirements": {
+                "power": 1,
+                "water": 1,
+                "food": 1,
+                "steel": 1
+              }
+            },
+            "B": {
+              "type": "normal",
+              "requirements": {
+                "power": 1,
+                "water": 1,
+                "food": 1,
+                "steel": 1
+              }
+            },
+            "C": {
+              "type": "normal",
+              "requirements": {
+                "power": 1,
+                "water": 1,
+                "food": 1,
+                "steel": 1
+              }
+            },
+            "A": {
+              "type": "normal",
+              "requirements": {
+                "power": 1,
+                "water": 1,
+                "food": 1,
+                "steel": 1
+              }
+            },
+            "E": {
+              "type": "normal",
+              "requirements": {
+                "power": 1,
+                "water": 1,
+                "food": 1
+              }
+            },
+            "F": {
+              "type": "normal",
+              "requirements": {
+                "power": 1,
+                "water": 1,
+                "food": 1
+              }
+            }
+          },
+          "activeServices": [
+            "generator",
+            "water",
+            "farm",
+            "factory"
+          ],
+          "quotas": {
+            "generator": {
+              "total": 6,
+              "maxPerRow": 1,
+              "maxPerColumn": 1,
+              "maxPerRegion": 1
+            },
+            "water": {
+              "total": 6,
+              "maxPerRow": 1,
+              "maxPerColumn": 1,
+              "maxPerRegion": 1
+            },
+            "farm": {
+              "total": 6,
+              "maxPerRow": 1,
+              "maxPerColumn": 1,
+              "maxPerRegion": 1
+            },
+            "factory": {
+              "total": 4,
+              "maxPerRow": 1,
+              "maxPerColumn": 1,
+              "maxPerRegion": 1
+            },
+            "twin": {
+              "total": 0,
+              "maxPerRow": 0,
+              "maxPerColumn": 0,
+              "maxPerRegion": 0
+            }
+          }
+        },
+        "solution": [
+          {
+            "service": "generator",
+            "position": {
+              "row": 0,
+              "column": 0
+            }
+          },
+          {
+            "service": "generator",
+            "position": {
+              "row": 1,
+              "column": 4
+            }
+          },
+          {
+            "service": "generator",
+            "position": {
+              "row": 2,
+              "column": 3
+            }
+          },
+          {
+            "service": "generator",
+            "position": {
+              "row": 3,
+              "column": 2
+            }
+          },
+          {
+            "service": "generator",
+            "position": {
+              "row": 4,
+              "column": 1
+            }
+          },
+          {
+            "service": "generator",
+            "position": {
+              "row": 5,
+              "column": 5
+            }
+          },
+          {
+            "service": "water",
+            "position": {
+              "row": 0,
+              "column": 3
+            }
+          },
+          {
+            "service": "water",
+            "position": {
+              "row": 1,
+              "column": 1
+            }
+          },
+          {
+            "service": "water",
+            "position": {
+              "row": 2,
+              "column": 5
+            }
+          },
+          {
+            "service": "water",
+            "position": {
+              "row": 3,
+              "column": 0
+            }
+          },
+          {
+            "service": "water",
+            "position": {
+              "row": 4,
+              "column": 4
+            }
+          },
+          {
+            "service": "water",
+            "position": {
+              "row": 5,
+              "column": 2
+            }
+          },
+          {
+            "service": "farm",
+            "position": {
+              "row": 0,
+              "column": 1
+            }
+          },
+          {
+            "service": "farm",
+            "position": {
+              "row": 1,
+              "column": 2
+            }
+          },
+          {
+            "service": "farm",
+            "position": {
+              "row": 2,
+              "column": 0
+            }
+          },
+          {
+            "service": "farm",
+            "position": {
+              "row": 3,
+              "column": 5
+            }
+          },
+          {
+            "service": "farm",
+            "position": {
+              "row": 4,
+              "column": 3
+            }
+          },
+          {
+            "service": "farm",
+            "position": {
+              "row": 5,
+              "column": 4
+            }
+          },
+          {
+            "service": "factory",
+            "position": {
+              "row": 0,
+              "column": 4
+            }
+          },
+          {
+            "service": "factory",
+            "position": {
+              "row": 1,
+              "column": 3
+            }
+          },
+          {
+            "service": "factory",
+            "position": {
+              "row": 4,
+              "column": 0
+            }
+          },
+          {
+            "service": "factory",
+            "position": {
+              "row": 5,
+              "column": 1
+            }
+          }
+        ]
+      },
+      "analysis": {
+        "valid": true,
+        "levelIssues": [],
+        "clueIssues": [],
+        "solutionCount": 2,
+        "structural": {
+          "size": 6,
+          "activeServices": [
+            "generator",
+            "water",
+            "farm",
+            "factory"
+          ],
+          "clues": 0,
+          "normalDistricts": 6,
+          "tunnelDistricts": 2
+        },
+        "candidateProfile": {
+          "initialCandidates": 132,
+          "peakCandidates": 132,
+          "averageCandidatesPerRequiredPlacement": 6
+        },
+        "logic": {
+          "solvedWithoutAssumption": false,
+          "steps": [],
+          "placementsByTechnique": {
+            "inventory-single": 0,
+            "row-single": 0,
+            "column-single": 0,
+            "district-single": 0
+          },
+          "bottlenecks": [
+            {
+              "kind": "logic-stall",
+              "remainingPlacements": 22,
+              "candidateCount": 132
+            }
+          ]
+        },
+        "search": {
+          "required": true,
+          "nodes": 807,
+          "decisions": 275,
+          "contradictions": 530,
+          "maxDepth": 12,
+          "truncated": false,
+          "solutions": 2
+        }
+      },
+      "ranking": {
+        "bucket": "search-ranked",
+        "sortKey": [
+          275,
+          12,
+          807,
+          530,
+          132
+        ]
+      }
+    }
+  ],
+  "failures": []
+}

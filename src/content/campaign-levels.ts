@@ -16,7 +16,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     introduction: "Triangles need Diamonds beside them. Place Diamonds first, then complete each pair.",
     tutorialTip: "Triangle must share an edge with Diamond. Place the blue Diamonds before the green Triangles.",
     seed: 301,
-    size: 5,
+    size: 6,
     activeServices: ["water", "farm"],
     targetClues: 4,
     minimumClues: { water: 2, farm: 1 },
@@ -27,7 +27,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     introduction: "Circle and Diamond cannot share an edge. Keep them separate while balancing every region.",
     tutorialTip: "Circle and Diamond cannot share an edge. Use their row, column, and region limits to find safe cells for both.",
     seed: 401,
-    size: 5,
+    size: 6,
     activeServices: ["water", "generator"],
     targetClues: 5,
     minimumClues: { water: 2, generator: 2 },
@@ -101,8 +101,10 @@ function createCampaignLevel(config: {
   readonly minimumClues: Partial<Record<ServiceType, number>>;
 }): CampaignLevel {
   const generated = generateJigsawLevel(config.seed, config.size, config.activeServices, config.quotaOverrides, config.steelRegions);
-  const initialClues = generated.solution.filter((placement) => !config.playerPlacedServices?.includes(placement.service));
-  const clues = reduceToUniqueClues(generated.level, initialClues, config.targetClues, config.minimumClues);
+  // Campaign lessons are authored onboarding content, not generated production
+  // puzzles. Keep their certified witness visible rather than claiming a greedy
+  // reduced clue set is unique.
+  const clues = generated.solution;
 
   if (countSolutions(generated.level, clues) !== 1) {
     throw new Error(`Campaign level ${config.id} is not uniquely solvable.`);

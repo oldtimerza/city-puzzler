@@ -4,7 +4,11 @@ Chord is an abstract symbol-grammar puzzle. Place Circle, Diamond, Triangle, and
 
 ## New Chord
 
-New Chord creates a uniquely solvable `6x6` board. Choose a clue profile: **Guided** has 3 immutable clues, **Standard** has 2, and **Expert** has 1.
+New Chord creates a uniquely solvable `6x6` board. `6x6` is the only supported size for generated production puzzles. Choose a clue profile: **Guided** has 3 immutable clues, **Standard** has 2, and **Expert** has 1.
+
+Generated region maps are proposals, not guarantees: some valid-looking layouts cannot satisfy the complete grammar. Each proposed layout is built into a complete level, then searched exhaustively. The generator returns a puzzle only when its witness passes `isLevelComplete`; an exhausted search is the only basis for an UNSAT result. Seeded randomness changes layout and clue-subset ordering for variety, never the certification result for a given seed.
+
+Uniqueness is certified by finding one solution and exhaustively searching for a second. Clue profiles enumerate subsets at the requested count rather than greedily removing clues; if no subset at that exact count is unique, generation reports `no-unique-clue-set`.
 
 ## Symbol Grammar
 
@@ -61,6 +65,7 @@ docs/            Canonical grammar and implementation roadmap
 ## Documentation
 
 - [Core grammar](docs/chord-core-grammar.md): formal symbol and region rules.
+- [Puzzle catalog](docs/puzzle-catalog.md): resumable certified batch generation and complexity triage.
 - [Implementation plan](docs/implementation-plan/README.md): current design and delivery record.
 - [itch.io playtest release](docs/itchio-playtest.md): packaging, upload, and verification steps.
 

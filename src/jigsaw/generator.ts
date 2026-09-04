@@ -1,22 +1,52 @@
 import type { Position } from "./position.js";
-import { isFactorySupplied, isLevelComplete, validateLevel, validatePlacement } from "./rules.js";
-import { countSolutions } from "./solver.js";
-import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type RegionDefinition, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
+import { isLevelComplete, validateLevel } from "./rules.js";
+import { classifyJigsaw, solveJigsawExactly } from "./solver.js";
+import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type Landmark, type RegionDefinition, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
-export const BOARD_SIZES = [5, 6, 8] as const;
+/** New Chord layouts are deliberately constrained to the production 6x6 board. */
+export const BOARD_SIZES = [6] as const;
 export type BoardSize = (typeof BOARD_SIZES)[number];
 export const CORE_SERVICE_TYPES = ["generator", "water", "farm", "factory"] as const;
 
-const PLACEMENT_ORDER: readonly ServiceType[] = ["water", "farm", "generator"];
 const cellsBySize = new Map<number, readonly Position[]>();
 
 export interface GeneratedJigsawLevel extends JigsawPuzzle {
   readonly seed: number;
 }
 
+export interface ChordBaseBoard {
+  readonly seed: number;
+  readonly level: JigsawLevel;
+  readonly solution: readonly ServicePlacement[];
+}
+
+export interface ChordVariantOptions {
+  readonly deadZoneCount: number;
+  readonly clueCount: number;
+  readonly variationSeed?: number;
+}
+
+export type ChordVariantResult =
+  | Readonly<{ status: "generated"; puzzle: JigsawPuzzle; deadZones: readonly Position[] }>
+  | Readonly<{ status: "no-unique-variant" }>;
+
+export type ChordProfileResult =
+  | Readonly<{ difficulty: ChordDifficulty; status: "generated"; puzzle: GeneratedJigsawLevel }>
+  | Readonly<{ difficulty: ChordDifficulty; status: "failed"; reason: string }>;
+
+export type CertificationFailure = "invalid-layout" | "unsatisfiable-layout" | "no-unique-clue-set" | "internal-failure";
+export type CertifiedLayoutResult =
+  | Readonly<{ status: "solved"; puzzle: GeneratedJigsawLevel }>
+  | Readonly<{ status: CertificationFailure; issues?: readonly string[] }>;
+
 export type QuotaOverrides = Readonly<Partial<Record<ServiceType, ServiceQuota>>>;
 export type ChordDifficulty = "guided" | "standard" | "expert";
 export type RegionTopology = "connected" | "tunnels";
+export interface LandmarkLimits {
+  readonly minimum?: number;
+  readonly maximum?: number;
+}
+export const DEFAULT_LANDMARK_LIMITS: Readonly<Required<LandmarkLimits>> = { minimum: 0, maximum: 5 };
 export const EXPERIMENTAL_PROFILES = ["twin", "sanctuary", "echo", "catalyst", "amplifier", "portal"] as const;
 export type ExperimentalProfile = (typeof EXPERIMENTAL_PROFILES)[number];
 
@@ -34,91 +64,66 @@ export function generateJigsawLevel(
   steelRegions: readonly string[] = [],
   topology: RegionTopology = "connected",
 ): GeneratedJigsawLevel {
-  if (size === 5 && (["generator", "water", "farm"] as const).every((service) => activeServices.includes(service))) {
-    throw new Error("The full Circle-Diamond-Triangle profile is not supported on a 5x5 board.");
-  }
-
   const random = seededRandom(seed);
-  let regions: readonly (readonly string[])[] | null = null;
-  let solution: readonly ServicePlacement[] | null = null;
-  let selectedSteelRegions: readonly string[] = steelRegions;
-  const quotas = quotasFor(size, activeServices, quotaOverrides);
-  const requiresFullFactoryLayout = activeServices.includes("factory") && quotas.factory.total === size;
-
-  for (let attempt = 0; attempt < 12 && solution === null; attempt += 1) {
-    const candidateRegions = buildIrregularRegions(size, random, topology);
-
-    if (candidateRegions === null) {
-      continue;
-    }
-    const baseSolution = solveServiceLayout(candidateRegions, size, activeServices.filter((service) => service !== "factory"), random);
-    const factoryCandidateRegions = steelRegions.length > 0 ? steelRegions : [...new Set(candidateRegions.flat())];
-    const factoryPlacementLevel: JigsawLevel = {
-      size,
-      regions: candidateRegions,
-      regionDefinitions: regionDefinitionsFor(candidateRegions, activeServices, factoryCandidateRegions, quotas.factory.total),
-      activeServices,
-      quotas,
-    };
-    const candidateSolution = requiresFullFactoryLayout
-      ? solveFullFactoryLayout(factoryPlacementLevel, random)
-      : baseSolution === null
-        ? null
-        : activeServices.includes("factory")
-          ? placeFactories(factoryPlacementLevel, baseSolution, random)
-          : baseSolution;
-    const candidateSteelRegions = activeServices.includes("factory") && steelRegions.length === 0 && candidateSolution !== null
-      ? candidateSolution.filter((placement) => placement.service === "factory").map((placement) => candidateRegions[placement.position.row]![placement.position.column]!)
-      : steelRegions;
-    const candidateLevel: JigsawLevel = {
-      size,
-      regions: candidateRegions,
-      regionDefinitions: regionDefinitionsFor(candidateRegions, activeServices, candidateSteelRegions, quotas.factory.total),
-      activeServices,
-      quotas,
-    };
-
-    if (candidateSolution !== null && isLevelComplete(candidateLevel, candidateSolution)) {
-      regions = candidateRegions;
-      solution = candidateSolution;
-      selectedSteelRegions = candidateSteelRegions;
-    }
+  // Layout proposals provide seeded variety only. Each individual layout is
+  // certified exhaustively, and proposal exhaustion is never reported as UNSAT.
+  for (let proposal = 0; proposal < 32; proposal += 1) {
+    const regions = buildIrregularRegions(size, random, topology);
+    if (regions === null) continue;
+    const certified = certifyJigsawLayout(regions, seed, activeServices, quotaOverrides, steelRegions);
+    if (certified.status === "solved") return certified.puzzle;
+    if (certified.status === "invalid-layout") throw new Error(`invalid-layout: ${certified.issues?.join(", ") ?? ""}`);
   }
-
-  if (regions === null || solution === null) {
-    throw new Error(`Seed ${seed} could not produce a solvable ${size}x${size} Jigsaw level.`);
-  }
-
-  const transform = Math.floor(random() * 8);
-  const level: JigsawLevel = {
-    size,
-    regions: transformRegions(regions, size, transform),
-    regionDefinitions: regionDefinitionsFor(regions, activeServices, selectedSteelRegions, quotas.factory.total),
-    activeServices,
-    quotas,
-  };
-  const transformedSolution = solution.map((placement) => ({
-    ...placement,
-    position: transformPosition(placement.position, size, transform),
-  }));
-
-  if (validateLevel(level).length > 0 || !isLevelComplete(level, transformedSolution)) {
-    throw new Error(`Seed ${seed} produced an invalid ${size}x${size} Jigsaw level.`);
-  }
-
-  return {
-    level,
-    solution: transformedSolution,
-    clues: [],
-    title: `${size}x${size} Practice`,
-    introduction: activeServices.includes("factory")
-      ? "Balance all four symbols across a fresh region map."
-      : "Build a balanced shape grammar across a fresh region map.",
-    seed,
-  };
+  throw new Error("internal-failure: no certified layout was proposed for this seed.");
 }
 
-export function generateRegionLayout(seed: number, size: BoardSize = 8, topology: RegionTopology = "tunnels"): readonly (readonly string[])[] {
+/** Certifies a supplied production layout without relying on random retries. */
+export function certifyJigsawLayout(
+  regions: readonly (readonly string[])[],
+  seed = 0,
+  activeServices: readonly ServiceType[] = CORE_SERVICE_TYPES,
+  quotaOverrides: QuotaOverrides = {},
+  steelRegions: readonly string[] = [],
+): CertifiedLayoutResult {
+  if (regions.length !== 6 || regions.some((row) => row.length !== 6)) return { status: "invalid-layout", issues: ["generated-layouts-require-6x6"] };
+  const quotas = quotasFor(6, activeServices, quotaOverrides);
+  const regionNames = [...new Set(regions.flat())].sort();
+  const steelChoices = !activeServices.includes("factory")
+    ? [[]]
+    : steelRegions.length > 0
+      ? [steelRegions]
+      : combinations(regionNames, quotas.factory.total);
+
+  for (const selectedSteelRegions of steelChoices) {
+    const level: JigsawLevel = {
+      size: 6,
+      regions,
+      regionDefinitions: regionDefinitionsFor(regions, activeServices, selectedSteelRegions, quotas.factory.total),
+      activeServices,
+      quotas,
+    };
+    const issues = validateLevel(level);
+    if (issues.length > 0) return { status: "invalid-layout", issues };
+    const outcome = solveJigsawExactly(level);
+    if (outcome.status === "satisfiable" && isLevelComplete(level, outcome.solution)) {
+      return {
+        status: "solved",
+        puzzle: {
+          level,
+          solution: outcome.solution,
+          clues: [],
+          title: "6x6 Practice",
+          introduction: activeServices.includes("factory") ? "Balance all four symbols across a fresh region map." : "Build a balanced shape grammar across a fresh region map.",
+          seed,
+        },
+      };
+    }
+    if (outcome.status === "invalid") return { status: "invalid-layout", issues: outcome.issues };
+  }
+  return { status: "unsatisfiable-layout" };
+}
+
+export function generateRegionLayout(seed: number, size: BoardSize = 6, topology: RegionTopology = "tunnels"): readonly (readonly string[])[] {
   const random = seededRandom(seed);
 
   for (let attempt = 0; attempt < 32; attempt += 1) {
@@ -129,49 +134,161 @@ export function generateRegionLayout(seed: number, size: BoardSize = 8, topology
     }
   }
 
-  throw new Error(`Seed ${seed} could not produce a ${topology} ${size}x${size} region layout.`);
+  throw new Error("internal-failure: could not construct the requested region shape.");
 }
 
-export function generateChordLevel(seed: number, difficulty: ChordDifficulty = "standard"): GeneratedJigsawLevel {
-  for (let attempt = 0; attempt < 48; attempt += 1) {
-    const candidateSeed = (seed + attempt) >>> 0;
-    const generated = generateJigsawLevel(candidateSeed, 6, CORE_SERVICE_TYPES, {}, [], "tunnels");
-    const clues = reduceToUniqueClues(generated.level, generated.solution, CHORD_CLUE_COUNTS[difficulty], seededRandom(candidateSeed ^ 0x9e3779b9));
+export function generateChordLevel(seed: number, difficulty: ChordDifficulty = "standard", landmarkLimits: LandmarkLimits = DEFAULT_LANDMARK_LIMITS): GeneratedJigsawLevel {
+  const base = generatePlayableChordBase(seed, landmarkLimits);
+  const puzzle = deriveChordProfile(base, difficulty);
+  if (puzzle === null) throw new Error("no-unique-clue-set");
+  return puzzle;
+}
 
-    if (clues.length === CHORD_CLUE_COUNTS[difficulty] && countSolutions(generated.level, clues) === 1) {
+/** Generates the certified constrained board once; profiles only vary its clue subset. */
+export function generateChordBaseBoard(seed: number, landmarkLimits: LandmarkLimits = DEFAULT_LANDMARK_LIMITS): ChordBaseBoard {
+  // Catalog bases deliberately have no clues, dead zones, or generated landmarks.
+  // Variants add those constraints after an author selects a base board.
+  void landmarkLimits;
+  const generated = generateJigsawLevel(seed, 6, CORE_SERVICE_TYPES, {}, [], "tunnels");
+  return { seed, level: generated.level, solution: generated.solution };
+}
+
+function generatePlayableChordBase(seed: number, landmarkLimits: LandmarkLimits): ChordBaseBoard {
+  const limits = normalizeLandmarkLimits(landmarkLimits);
+  for (let layoutOffset = 0; layoutOffset < 32; layoutOffset += 1) {
+    const generated = generateJigsawLevel((seed + layoutOffset) >>> 0, 6, CORE_SERVICE_TYPES, {}, [], "tunnels");
+    const base = restrictChordCandidate(seed, generated, limits, layoutOffset);
+    if (base !== null) return base;
+  }
+  throw new Error("internal-failure: no valid dead-zone Chord layout was proposed for this seed.");
+}
+
+/** Derives each requested clue profile independently from one certified base board. */
+export function generateChordProfiles(seed: number, difficulties: readonly ChordDifficulty[], landmarkLimits: LandmarkLimits = DEFAULT_LANDMARK_LIMITS): readonly ChordProfileResult[] {
+  let base: ChordBaseBoard;
+  try {
+    base = generatePlayableChordBase(seed, landmarkLimits);
+  } catch (error) {
+    const reason = `base-generation-error:${error instanceof Error ? error.message : String(error)}`;
+    return difficulties.map((difficulty) => ({ difficulty, status: "failed", reason }));
+  }
+  return difficulties.map((difficulty) => {
+    try {
+      const puzzle = deriveChordProfile(base, difficulty);
+      return puzzle === null ? { difficulty, status: "failed", reason: "no-unique-clue-set" } : { difficulty, status: "generated", puzzle };
+    } catch (error) {
+      return { difficulty, status: "failed", reason: `profile-generation-error:${error instanceof Error ? error.message : String(error)}` };
+    }
+  });
+}
+
+/**
+ * Creates a playable variant by turning empty witness cells into scattered dead
+ * terrain, then exactly certifying a clue subset at the requested count.
+ */
+export function deriveChordVariant(base: ChordBaseBoard, options: ChordVariantOptions): ChordVariantResult {
+  if (!Number.isInteger(options.deadZoneCount) || !Number.isInteger(options.clueCount) || options.deadZoneCount < 0 || options.clueCount < 0 || options.clueCount > base.solution.length) throw new Error("Variant dead-zone and clue counts must be valid non-negative integers.");
+  const occupied = new Set(base.solution.map((placement) => `${placement.position.row}:${placement.position.column}`));
+  const emptyCells = Array.from({ length: base.level.size * base.level.size }, (_, index) => ({ row: Math.floor(index / base.level.size), column: index % base.level.size }))
+    .filter((position) => !occupied.has(`${position.row}:${position.column}`));
+  if (options.deadZoneCount > emptyCells.length) return { status: "no-unique-variant" };
+
+  const random = seededRandom(options.variationSeed ?? base.seed);
+  for (const deadZones of shuffled(combinations(emptyCells, options.deadZoneCount), random)) {
+    const level = addDeadZones(base.level, deadZones);
+    if (validateLevel(level).length > 0 || !isLevelComplete(level, base.solution)) continue;
+    const clues = uniqueClueSubset(level, base.solution, options.clueCount, random);
+    if (clues !== null) {
       return {
-        ...generated,
-        clues,
-        title: "Chord",
-        introduction: "Balance every symbol across the board's rows, columns, and regions.",
+        status: "generated",
+        deadZones,
+        puzzle: {
+          level,
+          solution: base.solution,
+          clues,
+          title: "Chord variant",
+          introduction: `${deadZones.length} dead zones and ${clues.length} fixed clues.`,
+        },
       };
     }
   }
-
-  throw new Error(`Could not generate a uniquely solvable ${difficulty} Chord from seed ${seed}.`);
+  return { status: "no-unique-variant" };
 }
 
-function reduceToUniqueClues(
+function restrictChordCandidate(
+  seed: number,
+  generated: GeneratedJigsawLevel,
+  limits: Readonly<Required<LandmarkLimits>>,
+  layoutOffset: number,
+): ChordBaseBoard | null {
+  const occupied = new Set(generated.solution.map((placement) => `${placement.position.row}:${placement.position.column}`));
+  const availableLandmarkCells = Array.from({ length: 36 }, (_, index) => ({ row: Math.floor(index / 6), column: index % 6 }))
+    .filter((position) => !occupied.has(`${position.row}:${position.column}`));
+  const landmarks = chooseGeneratedLandmarks(availableLandmarkCells, seededRandom((seed ^ 0x517cc1b7 ^ layoutOffset) >>> 0), limits);
+  const reservedLandmarkCells = new Set(landmarks.map((landmark) => `${landmark.position.row}:${landmark.position.column}`));
+  const level: JigsawLevel = {
+    ...addDeadZoneForUnusedCells(generated.level, new Set([...occupied, ...reservedLandmarkCells])),
+    landmarks,
+  };
+  if (validateLevel(level).length > 0 || !isLevelComplete(level, generated.solution)) return null;
+  return { seed, level, solution: generated.solution };
+}
+
+function deriveChordProfile(base: ChordBaseBoard, difficulty: ChordDifficulty): GeneratedJigsawLevel | null {
+  const clues = uniqueClueSubset(base.level, base.solution, CHORD_CLUE_COUNTS[difficulty], seededRandom((base.seed ^ 0x9e3779b9) >>> 0));
+  return clues === null ? null : {
+    seed: base.seed,
+    level: base.level,
+    solution: base.solution,
+    clues,
+    title: "Chord",
+    introduction: "Balance every symbol across the board's rows, columns, and regions.",
+  };
+}
+
+function chooseGeneratedLandmarks(
+  available: readonly Position[],
+  random: () => number,
+  limits: Readonly<Required<LandmarkLimits>>,
+): readonly Landmark[] {
+  if (limits.minimum > available.length) throw new Error(`Landmark minimum ${limits.minimum} exceeds the ${available.length} available generated cells.`);
+  const count = limits.minimum + Math.floor(random() * (Math.min(limits.maximum, available.length) - limits.minimum + 1));
+  return shuffled(available, random).slice(0, count).map((position) => ({ type: "catalyst" as const, position }));
+}
+
+function addDeadZoneForUnusedCells(level: JigsawLevel, occupied: ReadonlySet<string>): JigsawLevel {
+  const regions = level.regions.map((row, rowIndex) => row.map((region, column) => occupied.has(`${rowIndex}:${column}`) ? region : "X"));
+  return { ...level, regions, regionDefinitions: { ...level.regionDefinitions, X: { type: "dead" } } };
+}
+
+function addDeadZones(level: JigsawLevel, deadZones: readonly Position[]): JigsawLevel {
+  if (deadZones.length === 0) return level;
+  const blocked = new Set(deadZones.map((position) => `${position.row}:${position.column}`));
+  return {
+    ...level,
+    regions: level.regions.map((row, rowIndex) => row.map((region, column) => blocked.has(`${rowIndex}:${column}`) ? "X" : region)),
+    regionDefinitions: { ...level.regionDefinitions, X: { type: "dead" } },
+  };
+}
+
+function normalizeLandmarkLimits(limits: LandmarkLimits): Readonly<Required<LandmarkLimits>> {
+  const minimum = limits.minimum ?? DEFAULT_LANDMARK_LIMITS.minimum;
+  const maximum = limits.maximum ?? DEFAULT_LANDMARK_LIMITS.maximum;
+  if (!Number.isInteger(minimum) || !Number.isInteger(maximum) || minimum < 0 || maximum < minimum || maximum > 36) throw new Error("Landmark limits must be non-negative integers with minimum less than or equal to maximum.");
+  return { minimum, maximum };
+}
+
+export function uniqueClueSubset(
   level: JigsawLevel,
   solution: readonly ServicePlacement[],
   target: number,
   random: () => number,
-): readonly ServicePlacement[] {
-  let clues = [...solution];
-
-  for (const candidate of shuffled(solution, random)) {
-    if (clues.length <= target) {
-      break;
-    }
-
-    const next = clues.filter((placement) => placement !== candidate);
-
-    if (countSolutions(level, next) === 1) {
-      clues = next;
-    }
+): readonly ServicePlacement[] | null {
+  for (const indices of shuffled(combinations(Array.from({ length: solution.length }, (_, index) => index), target), random)) {
+    const clues = indices.map((index) => solution[index]!);
+    if (classifyJigsaw(level, clues).status === "unique") return clues;
   }
-
-  return clues;
+  return null;
 }
 
 function regionDefinitionsFor(
@@ -210,19 +327,6 @@ export function jigsawLevelSignature(puzzle: Pick<JigsawPuzzle, "level" | "solut
     : `${landmark.type}:${landmark.position.row}:${landmark.position.column}`).sort().join("/");
 
   return `${puzzle.level.size}|${regions}|${landmarks}|${services}`;
-}
-
-function transformRegions(regions: readonly (readonly string[])[], size: BoardSize, transform: number): readonly (readonly string[])[] {
-  const result = Array.from({ length: size }, () => Array.from({ length: size }, () => ""));
-
-  for (let row = 0; row < size; row += 1) {
-    for (let column = 0; column < size; column += 1) {
-      const position = transformPosition({ row, column }, size, transform);
-      result[position.row]![position.column] = regions[row]![column]!;
-    }
-  }
-
-  return result;
 }
 
 function buildIrregularRegions(size: BoardSize, random: () => number, topology: RegionTopology): readonly (readonly string[])[] | null {
@@ -270,16 +374,6 @@ function buildIrregularRegions(size: BoardSize, random: () => number, topology: 
 }
 
 function initialRegions(size: BoardSize): string[][] {
-  if (size === 5) {
-    return [
-      ["A", "A", "B", "B", "B"],
-      ["A", "A", "D", "B", "B"],
-      ["A", "D", "D", "C", "C"],
-      ["D", "D", "E", "E", "C"],
-      ["E", "E", "E", "C", "C"],
-    ];
-  }
-
   const regionHeight = size / 2;
 
   return Array.from({ length: size }, (_, row) =>
@@ -361,157 +455,6 @@ function hasSimpleRegionShape(regions: readonly (readonly string[])[], size: Boa
   });
 }
 
-function solveServiceLayout(
-  regions: readonly (readonly string[])[],
-  size: BoardSize,
-  activeServices: readonly ServiceType[],
-  random: () => number,
-  initialPlacements: readonly ServicePlacement[] = [],
-  requireFactorySupport = false,
-): readonly ServicePlacement[] | null {
-  const orderedServices = PLACEMENT_ORDER.filter((service) => activeServices.includes(service));
-  return placeServiceInRows(regions, size, orderedServices, random, 0, 0, initialPlacements, requireFactorySupport);
-}
-
-function solveFullFactoryLayout(level: JigsawLevel, random: () => number): readonly ServicePlacement[] | null {
-  return placeFactoryRows(level.regions, level.size as BoardSize, random, 0, []);
-}
-
-function placeFactoryRows(
-  regions: readonly (readonly string[])[],
-  size: BoardSize,
-  random: () => number,
-  row: number,
-  placements: readonly ServicePlacement[],
-): readonly ServicePlacement[] | null {
-  if (row === size) {
-    return solveServiceLayout(regions, size, ["water", "farm", "generator"], random, placements, true);
-  }
-
-  for (const position of shuffled(allCells(size).filter((cell) => cell.row === row), random)) {
-    const region = regions[position.row]![position.column]!;
-
-    if (placements.some((placement) => placement.position.column === position.column || regions[placement.position.row]![placement.position.column] === region)) {
-      continue;
-    }
-
-    // Preserve existing seeded layouts after removing the unused orientation value.
-    random();
-    const result = placeFactoryRows(regions, size, random, row + 1, [
-      ...placements,
-      { service: "factory", position },
-    ]);
-
-    if (result !== null) {
-      return result;
-    }
-  }
-
-  return null;
-}
-
-function placeFactories(level: JigsawLevel, placements: readonly ServicePlacement[], random: () => number): readonly ServicePlacement[] | null {
-  if (placements.filter((placement) => placement.service === "factory").length === level.quotas.factory.total) {
-    return placements;
-  }
-
-  for (const position of shuffled(allCells(level.size as BoardSize), random)) {
-    // Preserve existing seeded layouts after removing the unused orientation value.
-    random();
-    const candidate: ServicePlacement = {
-      service: "factory",
-      position,
-    };
-    const next = [...placements, candidate];
-
-    if (validatePlacement(level, placements, candidate).length > 0 || !isFactorySupplied(next, candidate)) {
-      continue;
-    }
-
-    const result = placeFactories(level, next, random);
-
-    if (result !== null) {
-      return result;
-    }
-  }
-
-  return null;
-}
-
-function placeServiceInRows(
-  regions: readonly (readonly string[])[],
-  size: BoardSize,
-  orderedServices: readonly ServiceType[],
-  random: () => number,
-  serviceIndex: number,
-  row: number,
-  placements: readonly ServicePlacement[],
-  requireFactorySupport: boolean,
-): readonly ServicePlacement[] | null {
-  if (serviceIndex === orderedServices.length) {
-    return !requireFactorySupport || placements.filter((placement) => placement.service === "factory").every((factory) => isFactorySupplied(placements, factory))
-      ? placements
-      : null;
-  }
-
-  if (row === size) {
-    return placeServiceInRows(regions, size, orderedServices, random, serviceIndex + 1, 0, placements, requireFactorySupport);
-  }
-
-  const service = orderedServices[serviceIndex]!;
-  const sameService = placements.filter((placement) => placement.service === service);
-
-  for (const position of shuffled(allCells(size).filter((cell) => cell.row === row), random)) {
-    const region = regions[position.row]![position.column]!;
-
-    if (
-      sameService.some((placement) => placement.position.column === position.column || regions[placement.position.row]![placement.position.column] === region)
-      || placements.some((placement) => placement.position.row === position.row && placement.position.column === position.column)
-      || !servicePositionIsAllowed(service, position, placements, requireFactorySupport)
-    ) {
-      continue;
-    }
-
-    // Preserve existing seeded layouts after removing the unused orientation value.
-    random();
-    const result = placeServiceInRows(regions, size, orderedServices, random, serviceIndex, row + 1, [
-      ...placements,
-      { service, position },
-    ], requireFactorySupport);
-
-    if (result !== null) {
-      return result;
-    }
-  }
-
-  return null;
-}
-
-function servicePositionIsAllowed(service: ServiceType, position: Position, placements: readonly ServicePlacement[], requireFactorySupport: boolean): boolean {
-  if (
-    requireFactorySupport
-    && (service === "water" || service === "generator")
-    && !placements.some((placement) => placement.service === "factory" && areOrthogonallyAdjacent(placement.position, position))
-  ) {
-    return false;
-  }
-
-  if (service === "water" || service === "generator") {
-    const conflictingService = service === "water" ? "generator" : "water";
-    return placements.filter((placement) => placement.service === conflictingService).every((placement) => !areOrthogonallyAdjacent(placement.position, position));
-  }
-
-  if (service === "farm") {
-    return placements.filter((placement) => placement.service === "water").some((water) => areOrthogonallyAdjacent(water.position, position));
-  }
-
-  return true;
-}
-
-function areOrthogonallyAdjacent(first: Position, second: Position): boolean {
-  return Math.abs(first.row - second.row) + Math.abs(first.column - second.column) === 1;
-}
-
 function shuffled<T>(values: readonly T[], random: () => number): T[] {
   const result = [...values];
 
@@ -520,6 +463,20 @@ function shuffled<T>(values: readonly T[], random: () => number): T[] {
     [result[index], result[swapIndex]] = [result[swapIndex]!, result[index]!];
   }
 
+  return result;
+}
+
+function combinations<T>(values: readonly T[], count: number): T[][] {
+  if (!Number.isInteger(count) || count < 0 || count > values.length) return [];
+  const result: T[][] = [];
+  const choose = (start: number, selected: T[]): void => {
+    if (selected.length === count) {
+      result.push(selected);
+      return;
+    }
+    for (let index = start; index <= values.length - (count - selected.length); index += 1) choose(index + 1, [...selected, values[index]!]);
+  };
+  choose(0, []);
   return result;
 }
 
@@ -572,21 +529,6 @@ function positionKey(position: Position): string {
 
 function regionName(index: number): string {
   return String.fromCharCode("A".charCodeAt(0) + index);
-}
-
-function transformPosition(position: Position, size: BoardSize, transform: number): Position {
-  let { row, column } = position;
-  const rotations = transform % 4;
-
-  for (let index = 0; index < rotations; index += 1) {
-    [row, column] = [column, size - 1 - row];
-  }
-
-  if (transform >= 4) {
-    column = size - 1 - column;
-  }
-
-  return { row, column };
 }
 
 function seededRandom(seed: number): () => number {

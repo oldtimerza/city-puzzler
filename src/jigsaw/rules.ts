@@ -1,7 +1,7 @@
 import { samePosition, type Position } from "./position.js";
 import { RESOURCE_TYPES, SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type Landmark, type RegionDefinition, type RegionResourceRequirements, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "./types.js";
 
-export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-normal-region-count" | "disconnected-region" | "invalid-tunnel-components" | "invalid-region-definitions" | "invalid-active-services" | "invalid-quotas" | "invalid-sanctuary-count" | "invalid-landmarks";
+export type LevelIssue = "invalid-size" | "invalid-region-map" | "invalid-normal-region-count" | "invalid-tunnel-components" | "invalid-region-definitions" | "invalid-active-services" | "invalid-quotas" | "invalid-sanctuary-count" | "invalid-landmarks";
 export type PlacementIssue = "out-of-bounds" | "dead-region" | "landmark-cell" | "occupied-cell" | "inventory-exhausted" | "row-conflict" | "column-conflict" | "region-conflict" | "generator-water-conflict" | "factory-steel-demand-missing";
 export type PlacementActivity = (placements: readonly ServicePlacement[], placement: ServicePlacement) => boolean;
 
@@ -49,7 +49,6 @@ export function validateLevel(level: JigsawLevel): LevelIssue[] {
   });
   const regionNames = new Set(regions.keys());
   const normalRegions = [...regionNames].filter((region) => level.regionDefinitions[region]?.type === "normal");
-  if ([...regions].some(([region, cells]) => level.regionDefinitions[region]?.type !== "normal" && !isConnected(cells))) issues.push("disconnected-region");
   if ([...regions].some(([region, cells]) => level.regionDefinitions[region]?.type === "normal" && connectedComponents(cells).length > 2)) issues.push("invalid-tunnel-components");
   if (Object.keys(level.regionDefinitions).length !== regionNames.size || [...regionNames].some((region) => !hasValidRegionDefinition(level.regionDefinitions[region])) || Object.keys(level.regionDefinitions).some((region) => !regionNames.has(region)) || !resourceRequirementsMatchActiveServices(level) || totalResourceRequirement(level, "steel") !== level.quotas.factory.total) issues.push("invalid-region-definitions");
   if (normalRegions.length !== level.size) issues.push("invalid-normal-region-count");
@@ -305,7 +304,6 @@ function hasValidResourceRequirements(requirements: RegionResourceRequirements):
 function hasValidQuota(quota: ServiceQuota | undefined, size: number): quota is ServiceQuota { return quota !== undefined && [quota.total, quota.maxPerRow, quota.maxPerColumn, quota.maxPerRegion].every(Number.isInteger) && quota.total >= 0 && quota.total <= size * size && quota.maxPerRow >= 0 && quota.maxPerColumn >= 0 && quota.maxPerRegion >= 0; }
 function resourceRequirementsMatchActiveServices(level: JigsawLevel): boolean { const resources = new Set(level.activeServices.map((service) => SERVICE_RESOURCES[service])); return Object.values(level.regionDefinitions).every((definition) => definition.type === "dead" || Object.keys(definition.requirements).every((resource) => resources.has(resource as ResourceType))); }
 function totalResourceRequirement(level: JigsawLevel, resource: ResourceType): number { return Object.values(level.regionDefinitions).reduce((total, definition) => total + (definition.type === "normal" ? definition.requirements[resource] ?? 0 : 0), 0); }
-function isConnected(cells: readonly Position[]): boolean { return connectedComponents(cells).length === 1; }
 function connectedComponents(cells: readonly Position[]): readonly (readonly Position[])[] {
   const cellKeys = new Set(cells.map(positionKey)); const unvisited = new Map(cells.map((cell) => [positionKey(cell), cell])); const components: Position[][] = [];
   while (unvisited.size > 0) { const first = unvisited.values().next().value as Position; const component: Position[] = []; const queue = [first]; unvisited.delete(positionKey(first)); while (queue.length > 0) { const current = queue.shift()!; component.push(current); for (const neighbour of [{ row: current.row - 1, column: current.column }, { row: current.row + 1, column: current.column }, { row: current.row, column: current.column - 1 }, { row: current.row, column: current.column + 1 }]) if (cellKeys.has(positionKey(neighbour)) && unvisited.has(positionKey(neighbour))) { unvisited.delete(positionKey(neighbour)); queue.push(neighbour); } } components.push(component); }

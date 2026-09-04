@@ -14,11 +14,11 @@ See the [canonical grammar](../chord-core-grammar.md).
 
 The first campaign teaches one rule family at a time.
 
-1. **Triangle Link**: a 5x5 board with Diamonds and Triangles. It teaches row, column, and region quotas plus the Triangle-Diamond dependency. Include fixed Diamond clues and explicitly instruct the player to place Diamonds before Triangles.
-2. **Separated Marks**: a 5x5 board with Circles and Diamonds. It introduces the Circle-Diamond exclusion rule with generous starting clues.
+1. **Triangle Link**: a 6x6 board with Diamonds and Triangles. It teaches row, column, and region quotas plus the Triangle-Diamond dependency. Include fixed Diamond clues and explicitly instruct the player to place Diamonds before Triangles.
+2. **Separated Marks**: a 6x6 board with Circles and Diamonds. It introduces the Circle-Diamond exclusion rule with generous starting clues.
 3. **Three-Part Chord**: a 6x6 board with all three symbols, fewer clues, and more irregular region shapes. This is the first standard-difficulty level.
 
-Later lessons should add varied 6x6 and 8x8 region maps before adding Square.
+Later lessons should add varied 6x6 region maps before adding Square.
 
 ## Level Model
 
@@ -48,10 +48,10 @@ The player-facing hint system should evolve from a stored-solution reveal into a
 
 Lesson support extends the current practice grammar in two ways:
 
-- Add curated 5x5 boards with five connected regions of five cells.
+- Add curated 6x6 boards with six connected regions.
 - Support partial symbol profiles, beginning with the Diamond-Triangle profile.
 
-Use authored 5x5 region maps for the first tutorial. General-purpose 5x5 procedural topology generation is deferred until Classic mode needs it.
+Use authored 6x6 region maps for the first tutorial. Generated production topology is limited to 6x6.
 
 When profile-based lessons are implemented, update the canonical grammar so that quotas and relationships apply to a level's active symbols. The current full Circle-Diamond-Triangle profile remains the standard profile.
 
@@ -67,7 +67,7 @@ Use `Practice` as the lesson picker:
 
 ## Tests
 
-- A 5x5 region map has five connected regions of five cells.
+- A 6x6 region map has six connected regions.
 - Two-symbol and three-symbol profiles validate independently.
 - Fixed clues cannot be removed, overwritten, or reset away.
 - The solver reports zero, one, or multiple solutions correctly.

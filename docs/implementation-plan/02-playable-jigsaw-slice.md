@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete. The playable Phaser board includes responsive controls, legal-cell highlighting, undo/redo, reset, hints, solution preview, and 6x6 and 8x8 Classic boards.
+Complete. The playable Phaser board includes responsive controls, legal-cell highlighting, undo/redo, reset, hints, solution preview, and 6x6 Classic boards.
 
 ## Goal
 

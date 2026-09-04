@@ -22,34 +22,39 @@ export class ChordAudio {
   }
 
   playPlacement(service: ServiceType): void {
-    this.playCharm(PLACEMENT_PITCHES[service], 0.28, 0.06);
+    this.playHarpNote(PLACEMENT_PITCHES[service], 0.052);
   }
 
   playActivation(): void {
-    this.playCharm(659.25, 0.24, 0.045);
-    this.playCharm(783.99, 0.3, 0.038, 0.075);
+    this.playHarpNote(659.25, 0.045, 0.18);
+    this.playHarpNote(783.99, 0.04, 0.18, 0.22);
   }
 
   playConnectionChain(services: readonly ServiceType[]): void {
     services.forEach((service, index) => {
-      this.playCharm(PLACEMENT_PITCHES[service], 0.22, 0.035, 0.06 + index * 0.085);
+      this.playHarpNote(PLACEMENT_PITCHES[service], 0.035, 0.14, index * 0.17);
     });
   }
 
   playCompletion(): void {
-    this.playCharm(523.25, 0.5, 0.045);
-    this.playCharm(659.25, 0.5, 0.04, 0.07);
-    this.playCharm(783.99, 0.58, 0.035, 0.14);
+    this.playHarpNote(523.25, 0.045, 0.2);
+    this.playHarpNote(659.25, 0.05, 0.2, 0.24);
+    this.playHarpNote(783.99, 0.06, 0.42, 0.48);
   }
 
   playUndo(): void {
-    this.playCharm(293.66, 0.16, 0.035);
+    this.playHarpNote(293.66, 0.035, 0.32);
   }
 
-  private playCharm(frequency: number, duration: number, volume: number, delay = 0): void {
+  playRemoval(): void {
+    this.playHarpNote(220, 0.025, 0.2);
+  }
+
+  /** Harmonic partials make one synthesized note read as a gently plucked harp string. */
+  private playHarpNote(frequency: number, volume: number, duration = 0.62, delay = 0): void {
     this.playTone(frequency, duration, volume, "triangle", delay);
-    this.playTone(frequency * 2, duration * 0.62, volume * 0.11, "sine", delay + 0.008);
-    this.playTone(frequency * 3, duration * 0.44, volume * 0.035, "sine", delay + 0.016);
+    this.playTone(frequency * 2, duration * 0.64, volume * 0.11, "sine", delay + 0.004);
+    this.playTone(frequency * 3, duration * 0.42, volume * 0.035, "sine", delay + 0.011);
   }
 
   private playTone(frequency: number, duration: number, volume: number, type: OscillatorType, delay = 0): void {

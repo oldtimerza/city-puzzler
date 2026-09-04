@@ -5,9 +5,9 @@ import { generateRegionLayout } from "../jigsaw/generator.js";
 import { samePosition, type Position } from "../jigsaw/position.js";
 import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type Landmark, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
-const EDITOR_SIZES = [6, 8] as const;
+const EDITOR_SIZES = [6] as const;
 type EditorSize = (typeof EDITOR_SIZES)[number];
-const DEAD_REGION_IDS = ["X", "Y"] as const;
+const DEAD_REGION_IDS = ["X"] as const;
 const LANDMARK_TOOLS = ["echo", "catalyst", "amplifier", "portal", "erase"] as const;
 type LandmarkTool = (typeof LANDMARK_TOOLS)[number];
 const REGION_COLORS: Readonly<Record<string, string>> = {
@@ -20,13 +20,12 @@ const REGION_COLORS: Readonly<Record<string, string>> = {
   G: "#e9b6d2",
   H: "#c9ced4",
   X: "#717974",
-  Y: "#596561",
 };
 
 export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLElement, onTest: (puzzle: JigsawPuzzle) => void): void {
   let selectedRegion = "A";
   let activeServices = new Set<ServiceType>(["water", "farm", "generator"]);
-  let boardSize: EditorSize = 8;
+  let boardSize: EditorSize = 6;
   let regions = defaultRegions(boardSize);
   let nextLayoutSeed = Date.now() >>> 0;
   const requirements = new Map<string, Set<ServiceType>>(regionIdsForSize(boardSize).map((region) => [region, new Set(activeServices)]));
@@ -85,7 +84,7 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
       <section class="editor-section" aria-labelledby="editor-brush-title">
         <h4 id="editor-brush-title">Paint region</h4>
         <div class="editor-brushes" role="toolbar" aria-label="Region paint tools">
-          ${[...regionIdsForSize(boardSize), ...DEAD_REGION_IDS].map((region) => `<button class="editor-brush ${selectedRegion === region ? "selected" : ""} ${isDeadRegion(region) ? "dead" : ""}" type="button" data-editor-region="${region}" style="--region-color: ${REGION_COLORS[region]}">${isDeadRegion(region) ? `Dead ${region}` : `Region ${region}`}</button>`).join("")}
+          ${[...regionIdsForSize(boardSize), ...DEAD_REGION_IDS].map((region) => `<button class="editor-brush ${selectedRegion === region ? "selected" : ""} ${isDeadRegion(region) ? "dead" : ""}" type="button" data-editor-region="${region}" style="--region-color: ${REGION_COLORS[region]}">${isDeadRegion(region) ? "Dead zone" : `Region ${region}`}</button>`).join("")}
         </div>
         <button class="menu-button editor-randomize" type="button" data-editor-randomize>Randomise layout</button>
       </section>
@@ -162,7 +161,13 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
       changed = true;
     } else if (region) {
       selectedRegion = region;
-      editorMessage = null;
+      // A brush selection always returns the board to paint mode. Without this,
+      // a previously selected landmark tool intercepts the next cell click.
+      selectedLandmark = null;
+      pendingPortalEndpoint = null;
+      editorMessage = isDeadRegion(region)
+        ? "Dead zone selected. Click cells to block all symbols there."
+        : `Region ${region} selected. Click cells to paint it.`;
     } else if (cell) {
       const [row = 0, column = 0] = cell.split(":").map(Number);
       const position = { row, column };
@@ -523,7 +528,6 @@ function issueLabel(issue: string): string {
     "invalid-size": "The board size is invalid.",
     "invalid-region-map": "The region map must match the board size.",
     "invalid-normal-region-count": "Use one normal district for each board row.",
-    "disconnected-region": "Every region, including dead terrain, must be edge-connected.",
     "invalid-tunnel-components": "A normal district may have one connected part or exactly two tunnel-connected parts.",
     "invalid-region-definitions": "Every normal region needs valid requirements for active symbols.",
     "invalid-active-services": "Choose at least one active symbol with a matching quota.",

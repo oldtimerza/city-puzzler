@@ -2,15 +2,21 @@ import Phaser from "phaser";
 
 import { CAMPAIGN_LEVELS, type CampaignLevel } from "./content/campaign-levels.js";
 import { mountExperimentalEditor } from "./editor/ExperimentalEditor.js";
+import { mountPuzzleCatalogBrowser } from "./editor/PuzzleCatalogBrowser.js";
 import { JigsawScene, type JigsawViewState } from "./game/JigsawScene.js";
+import { HarpMusic } from "./game/HarpMusic.js";
 import { generateChordLevel, type ChordDifficulty } from "./jigsaw/generator.js";
 import { SERVICE_TYPES, type JigsawPuzzle, type ServiceType } from "./jigsaw/types.js";
 import "./styles.css";
 
 const PROGRESS_KEY = "chord.campaign.v1";
 const SOUND_EFFECTS_KEY = "chord.sound-effects.v1";
+const BACKGROUND_MUSIC_KEY = "chord.background-music.v1";
 
 const inventoryCount = byId<HTMLSpanElement>("inventory-count");
+const placementStack = byId<HTMLOListElement>("placement-stack");
+const placementStackCount = byId<HTMLSpanElement>("placement-stack-count");
+const placementStackEmpty = byId<HTMLParagraphElement>("placement-stack-empty");
 const completionNotice = byId<HTMLDivElement>("completion-notice");
 const refresh = byId<HTMLButtonElement>("refresh");
 const mainMenu = byId<HTMLButtonElement>("main-menu");
@@ -22,6 +28,7 @@ const showPlacements = byId<HTMLInputElement>("show-placements");
 const resolveSingles = byId<HTMLButtonElement>("resolve-singles");
 const requirementDisplay = byId<HTMLInputElement>("requirement-display");
 const soundEffects = byId<HTMLInputElement>("sound-effects");
+const backgroundMusic = byId<HTMLInputElement>("background-music");
 const showSolution = byId<HTMLButtonElement>("show-solution");
 const reset = byId<HTMLButtonElement>("reset");
 const status = byId<HTMLParagraphElement>("status");
@@ -30,6 +37,7 @@ const startMenuActions = byId<HTMLElement>("start-menu-actions");
 const newGame = byId<HTMLButtonElement>("new-game");
 const openPractice = byId<HTMLButtonElement>("open-practice");
 const openExperimentalEditor = byId<HTMLButtonElement>("open-experimental-editor");
+const openPuzzleCatalog = byId<HTMLButtonElement>("open-puzzle-catalog");
 const openHelp = byId<HTMLButtonElement>("open-help");
 const helpPanel = byId<HTMLElement>("help-panel");
 const closeHelp = byId<HTMLButtonElement>("close-help");
@@ -41,6 +49,9 @@ const experimentalEditorScreen = byId<HTMLElement>("experimental-editor-screen")
 const experimentalEditorBoard = byId<HTMLElement>("experimental-editor-board");
 const experimentalEditorTools = byId<HTMLElement>("experimental-editor-tools");
 const backFromExperimentalEditor = byId<HTMLButtonElement>("back-from-experimental-editor");
+const puzzleCatalogScreen = byId<HTMLElement>("puzzle-catalog-screen");
+const puzzleCatalogBrowser = byId<HTMLElement>("puzzle-catalog-browser");
+const backFromPuzzleCatalog = byId<HTMLButtonElement>("back-from-puzzle-catalog");
 const difficultyPicker = byId<HTMLElement>("difficulty-picker");
 const backFromDifficulty = byId<HTMLButtonElement>("back-from-difficulty");
 const difficultyChoices = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-difficulty]"));
@@ -54,11 +65,14 @@ const gameHelp = byId<HTMLButtonElement>("game-help");
 
 const completedLevelIds = loadCompletedLevelIds();
 const soundEffectsEnabled = loadSoundEffectsEnabled();
+const backgroundMusicEnabled = loadBackgroundMusicEnabled();
+const harpMusic = new HarpMusic();
 let nextSeed = Date.now() >>> 0;
 let selectedDifficulty: ChordDifficulty = "standard";
 let activeCampaignIndex: number | null = null;
 let helpOpenedFromGame = false;
 let testingEditorBoard = false;
+let testingCatalogBoard = false;
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "game",
@@ -77,7 +91,7 @@ const game = new Phaser.Game({
 
 document.addEventListener("keydown", showHintWithKey);
 refresh.addEventListener("click", refreshPuzzle);
-mainMenu.addEventListener("click", () => testingEditorBoard ? showExperimentalEditor() : showMainMenu());
+mainMenu.addEventListener("click", () => testingEditorBoard ? showExperimentalEditor() : testingCatalogBoard ? showPuzzleCatalog() : showMainMenu());
 nextLevel.addEventListener("click", startNextCampaignLevel);
 undo.addEventListener("click", () => scene().undo());
 redo.addEventListener("click", () => scene().redo());
@@ -89,17 +103,27 @@ soundEffects.addEventListener("change", () => {
   scene().setSoundEffectsEnabled(soundEffects.checked);
   saveSoundEffectsEnabled(soundEffects.checked);
 });
+backgroundMusic.checked = backgroundMusicEnabled;
+harpMusic.setEnabled(backgroundMusicEnabled);
+backgroundMusic.addEventListener("change", () => {
+  harpMusic.setEnabled(backgroundMusic.checked);
+  saveBackgroundMusicEnabled(backgroundMusic.checked);
+});
+document.addEventListener("pointerdown", () => harpMusic.unlock(), { once: true });
+document.addEventListener("keydown", () => harpMusic.unlock(), { once: true });
 showSolution.addEventListener("click", () => scene().revealSolution());
 reset.addEventListener("click", () => scene().reset());
 newGame.addEventListener("click", showDifficultyPicker);
 openPractice.addEventListener("click", showCampaignPicker);
 openExperimentalEditor.addEventListener("click", showExperimentalEditor);
+openPuzzleCatalog.addEventListener("click", showPuzzleCatalog);
 openHelp.addEventListener("click", openHelpPanel);
 closeHelp.addEventListener("click", closeHelpPanel);
 backFromCampaign.addEventListener("click", showStartActions);
 backFromDifficulty.addEventListener("click", showStartActions);
 resetTutorialProgress.addEventListener("click", resetTutorialProgressForPlaytest);
 backFromExperimentalEditor.addEventListener("click", showStartActions);
+backFromPuzzleCatalog.addEventListener("click", showStartActions);
 startGameButton.addEventListener("click", startGame);
 dismissLevelTip.addEventListener("click", hideLevelTip);
 gameHelp.addEventListener("click", showGameHelp);
@@ -110,6 +134,7 @@ for (const choice of difficultyChoices) {
 
 renderCampaignLevels();
 mountExperimentalEditor(experimentalEditorBoard, experimentalEditorTools, testEditorBoard);
+mountPuzzleCatalogBrowser(puzzleCatalogBrowser, testCatalogPuzzle);
 attachSceneEvents();
 
 function attachSceneEvents(): void {
@@ -130,10 +155,11 @@ function renderControls(state: JigsawViewState): void {
   const totalSymbols = state.activeServices.reduce((total, service) => total + state.quotas[service].total, 0);
 
   inventoryCount.textContent = `${placed} / ${totalSymbols} placed`;
+  renderPlacementStack(state.placementStack, state.solutionRevealed);
   completionNotice.hidden = !state.complete;
   undo.disabled = !state.canUndo;
   redo.disabled = !state.canRedo;
-  refresh.hidden = activeCampaignIndex !== null || testingEditorBoard;
+  refresh.hidden = activeCampaignIndex !== null || testingEditorBoard || testingCatalogBoard;
   showSolution.hidden = activeCampaignIndex !== null;
   showSolution.disabled = state.solutionRevealed;
   hint.disabled = state.solutionRevealed;
@@ -148,9 +174,33 @@ function renderControls(state: JigsawViewState): void {
   const canContinueCampaign = activeCampaignIndex !== null && activeCampaignIndex < CAMPAIGN_LEVELS.length - 1;
   nextLevel.hidden = !(state.complete && (activeCampaignIndex === null || canContinueCampaign));
   nextLevel.textContent = activeCampaignIndex === null ? "Back to menu" : "Next level";
-  mainMenu.textContent = testingEditorBoard ? "Return to editor" : "Main menu";
+  mainMenu.textContent = testingEditorBoard ? "Return to editor" : testingCatalogBoard ? "Return to catalog" : "Main menu";
   status.textContent = state.status;
   status.classList.toggle("complete", state.complete);
+}
+
+function renderPlacementStack(placements: readonly { readonly service: ServiceType; readonly position: { readonly row: number; readonly column: number } }[], disabled: boolean): void {
+  placementStack.replaceChildren(...placements.slice().reverse().map((placement) => {
+    const item = document.createElement("li");
+    const symbol = document.createElement("span");
+    symbol.className = `placement-stack-symbol ${placement.service}`;
+    symbol.textContent = symbolGlyph(placement.service);
+    symbol.setAttribute("aria-hidden", "true");
+    const coordinate = document.createElement("span");
+    const location = `${String.fromCharCode(65 + placement.position.column)}${placement.position.row + 1}`;
+    coordinate.textContent = location;
+    const undoPlacement = document.createElement("button");
+    undoPlacement.type = "button";
+    undoPlacement.className = "placement-stack-undo";
+    undoPlacement.textContent = "×";
+    undoPlacement.disabled = disabled;
+    undoPlacement.setAttribute("aria-label", `Undo ${symbolLabel(placement.service)} at ${location}`);
+    undoPlacement.addEventListener("click", () => scene().removePlacement(placement.position));
+    item.append(symbol, coordinate, undoPlacement);
+    return item;
+  }));
+  placementStackCount.textContent = `${placements.length} ${placements.length === 1 ? "move" : "moves"}`;
+  placementStackEmpty.hidden = placements.length > 0;
 }
 
 function scene(): JigsawScene {
@@ -160,6 +210,7 @@ function scene(): JigsawScene {
 function startGame(): void {
   activeCampaignIndex = null;
   testingEditorBoard = false;
+  testingCatalogBoard = false;
   refreshPuzzle();
   startMenu.hidden = true;
   hideLevelTip();
@@ -179,6 +230,7 @@ function startCampaignLevel(index: number): void {
 
   activeCampaignIndex = index;
   testingEditorBoard = false;
+  testingCatalogBoard = false;
   scene().loadPuzzle(level);
   startMenu.hidden = true;
 
@@ -205,6 +257,7 @@ function showCampaignPicker(): void {
   difficultyPicker.hidden = true;
   campaignPicker.hidden = false;
   experimentalEditorScreen.hidden = true;
+  puzzleCatalogScreen.hidden = true;
   renderCampaignLevels();
   campaignLevels.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
 }
@@ -215,6 +268,7 @@ function showDifficultyPicker(): void {
   helpPanel.hidden = true;
   campaignPicker.hidden = true;
   experimentalEditorScreen.hidden = true;
+  puzzleCatalogScreen.hidden = true;
   difficultyPicker.hidden = false;
   difficultyChoices.find((choice) => choice.dataset.difficulty === selectedDifficulty)?.focus();
 }
@@ -224,6 +278,7 @@ function showStartActions(): void {
   campaignPicker.hidden = true;
   difficultyPicker.hidden = true;
   experimentalEditorScreen.hidden = true;
+  puzzleCatalogScreen.hidden = true;
   helpPanel.hidden = true;
   startMenuActions.hidden = false;
   newGame.focus();
@@ -232,25 +287,48 @@ function showStartActions(): void {
 function showExperimentalEditor(): void {
   hideLevelTip();
   testingEditorBoard = false;
+  testingCatalogBoard = false;
   startMenu.hidden = true;
+  puzzleCatalogScreen.hidden = true;
   experimentalEditorScreen.hidden = false;
   experimentalEditorTools.querySelector<HTMLButtonElement>(".editor-brush.selected")?.focus();
+}
+
+function showPuzzleCatalog(): void {
+  hideLevelTip();
+  testingEditorBoard = false;
+  testingCatalogBoard = false;
+  startMenu.hidden = true;
+  experimentalEditorScreen.hidden = true;
+  puzzleCatalogScreen.hidden = false;
+  puzzleCatalogBrowser.querySelector<HTMLInputElement>("[data-catalog-file]")?.focus();
 }
 
 function showMainMenu(): void {
   hideLevelTip();
   helpOpenedFromGame = false;
   testingEditorBoard = false;
+  testingCatalogBoard = false;
   startMenu.hidden = false;
   experimentalEditorScreen.hidden = true;
+  puzzleCatalogScreen.hidden = true;
   showStartActions();
 }
 
 function testEditorBoard(puzzle: JigsawPuzzle): void {
   activeCampaignIndex = null;
   testingEditorBoard = true;
+  testingCatalogBoard = false;
   scene().loadPuzzle(puzzle);
   experimentalEditorScreen.hidden = true;
+}
+
+function testCatalogPuzzle(puzzle: JigsawPuzzle): void {
+  activeCampaignIndex = null;
+  testingEditorBoard = false;
+  testingCatalogBoard = true;
+  scene().loadPuzzle(puzzle);
+  puzzleCatalogScreen.hidden = true;
 }
 
 function showLevelTip(level: CampaignLevel, index: number): void {
@@ -356,6 +434,22 @@ function saveSoundEffectsEnabled(enabled: boolean): void {
   }
 }
 
+function loadBackgroundMusicEnabled(): boolean {
+  try {
+    return localStorage.getItem(BACKGROUND_MUSIC_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function saveBackgroundMusicEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(BACKGROUND_MUSIC_KEY, String(enabled));
+  } catch {
+    // Keep the setting for this session if browser storage is unavailable.
+  }
+}
+
 function openHelpPanel(): void {
   helpOpenedFromGame = false;
   showHelpPanel();
@@ -366,6 +460,7 @@ function showHelpPanel(): void {
   campaignPicker.hidden = true;
   difficultyPicker.hidden = true;
   experimentalEditorScreen.hidden = true;
+  puzzleCatalogScreen.hidden = true;
   helpPanel.hidden = false;
   openHelp.setAttribute("aria-expanded", "true");
   closeHelp.focus();
@@ -411,6 +506,16 @@ function symbolLabel(service: ServiceType): string {
       return "Square";
     case "twin":
       return "Twin";
+  }
+}
+
+function symbolGlyph(service: ServiceType): string {
+  switch (service) {
+    case "generator": return "o";
+    case "water": return "◇";
+    case "farm": return "△";
+    case "factory": return "■";
+    case "twin": return "∞";
   }
 }
 

@@ -10,7 +10,7 @@ Build a renderer-independent rule engine for abstract symbols under Jigsaw Sudok
 
 ## Scope
 
-- A 6x6 or 8x8 board divided into `N` contiguous, irregular regions.
+- A 6x6 board divided into `N` contiguous, irregular regions. Generated production boards are 6x6 only.
 - Three symbols: Circle, Diamond, and Triangle.
 - `N` instances of each active symbol.
 - One symbol per cell.
