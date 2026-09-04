@@ -3,7 +3,7 @@ import Phaser from "phaser";
 import { ChordAudio } from "./ChordAudio.js";
 import { generateJigsawLevel, jigsawLevelSignature, type BoardSize } from "../jigsaw/generator.js";
 import { samePosition, type Position } from "../jigsaw/position.js";
-import { factorySuppliers, inactiveFactories, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, legalServicesAt, regionComponents, regionDefinitionAt, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
+import { evaluatePlacements, factorySuppliers, identitiesAt, inactiveFactories, interactionEdges, isFactorySupplied, isFarmSupplied, isLevelComplete, isPlacementActive, landmarkAt, legalServicesAt, regionComponents, regionDefinitionAt, supplyingDam, unmetResourcesForRegion, validatePlacement, type PlacementIssue } from "../jigsaw/rules.js";
 import { SERVICE_TYPES, type JigsawPuzzle, type ResourceType, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
 const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
@@ -11,12 +11,14 @@ const SERVICE_COLORS: Readonly<Record<ServiceType, number>> = {
   water: 0x49a6c9,
   farm: 0x6db675,
   factory: 0xb44d4a,
+  twin: 0x8665b8,
 };
 const RESOURCE_SYMBOLS: Readonly<Record<ResourceType, ServiceType>> = {
   food: "farm",
   water: "water",
   power: "generator",
   steel: "factory",
+  bond: "twin",
 };
 const REGION_COLORS = [0xf0c4c4, 0x91d46f, 0xb9d8ec, 0xeed782, 0x86a5dd, 0xf4a640, 0xe9b6d2, 0xc9ced4];
 
@@ -384,6 +386,10 @@ export class JigsawScene extends Phaser.Scene {
 
     this.renderTunnelArches();
 
+    this.renderPortalConnections();
+
+    this.renderLandmarks(displayedPlacements);
+
     this.renderPreview();
 
     if (this.hint && !this.showSolutionPreview) {
@@ -406,7 +412,9 @@ export class JigsawScene extends Phaser.Scene {
   private renderCell(position: Position, legalCells: ReadonlySet<string>): void {
     const { x, y } = this.cellOrigin(position);
     const region = this.level.regions[position.row]![position.column]!;
-    const dead = regionDefinitionAt(this.level, position).type === "dead";
+    const definition = regionDefinitionAt(this.level, position);
+    const dead = definition.type === "dead";
+    const landmark = landmarkAt(this.level, position);
     const fill = dead ? 0x7a817b : REGION_COLORS[(region.charCodeAt(0) - "A".charCodeAt(0)) % REGION_COLORS.length]!;
     const legal = legalCells.has(positionKey(position));
     const cell = this.add
@@ -417,6 +425,14 @@ export class JigsawScene extends Phaser.Scene {
       const hatch = this.add.graphics();
       hatch.lineStyle(1, 0xe5e1d7, 0.38);
       hatch.lineBetween(x + 7, y + this.cellSize - 7, x + this.cellSize - 7, y + 7);
+      return;
+    }
+
+    if (definition.type === "normal" && definition.sanctuary) {
+      cell.setStrokeStyle(3, 0x76539e, 0.9);
+    }
+
+    if (landmark) {
       return;
     }
 
@@ -520,6 +536,37 @@ export class JigsawScene extends Phaser.Scene {
     }
   }
 
+  private renderPortalConnections(): void {
+    for (const edge of interactionEdges(this.level).filter((candidate) => candidate.kind === "portal")) {
+      const first = this.cellCenter(edge.first);
+      const second = this.cellCenter(edge.second);
+      const curve = new Phaser.Curves.QuadraticBezier(
+        new Phaser.Math.Vector2(first.x, first.y),
+        new Phaser.Math.Vector2((first.x + second.x) / 2, Math.min(first.y, second.y) - this.cellSize * 0.75),
+        new Phaser.Math.Vector2(second.x, second.y),
+      );
+      const line = this.add.graphics();
+      line.lineStyle(Math.max(3, this.cellSize * 0.05), 0x8065bb, 0.8);
+      curve.draw(line, 20);
+      line.fillStyle(0xf8f5ec, 1);
+      line.fillCircle(first.x, first.y, Math.max(4, this.cellSize * 0.1));
+      line.fillCircle(second.x, second.y, Math.max(4, this.cellSize * 0.1));
+    }
+  }
+
+  private renderLandmarks(placements: readonly ServicePlacement[]): void {
+    for (const landmark of this.level.landmarks ?? []) {
+      const center = this.cellCenter(landmark.position);
+      const radius = Math.max(8, this.cellSize * 0.19);
+      const marker = this.add.circle(center.x, center.y, radius, 0xfffcf4, 0.96).setStrokeStyle(2, 0x30474a, 0.9);
+      const label = landmark.type === "echo" ? "E" : landmark.type === "catalyst" ? "*" : landmark.type === "amplifier" ? "+" : "P";
+      this.add.text(center.x, center.y, label, { fontFamily: "system-ui, sans-serif", fontSize: `${Math.max(11, this.cellSize * 0.24)}px`, fontStyle: "bold", color: landmark.type === "portal" ? "#76539e" : "#30474a" }).setOrigin(0.5).setDepth(marker.depth + 1);
+      if (landmark.type === "echo") {
+        identitiesAt(this.level, placements, landmark.position).forEach((identity, index) => this.renderSmallSymbol(identity.service, center.x + (index - 0.5) * radius * 1.15, center.y + radius * 0.95, Math.max(4, radius * 0.31), 0.72, 5));
+      }
+    }
+  }
+
   private renderPreview(): void {
     const hoveredCell = this.hoveredCell;
 
@@ -579,10 +626,18 @@ export class JigsawScene extends Phaser.Scene {
       case "factory":
         this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(2, outline);
         break;
+      case "twin":
+        this.add.circle(centerX - symbolSize * 0.42, centerY, symbolSize * 0.58, SERVICE_COLORS.twin).setStrokeStyle(2, outline);
+        this.add.circle(centerX + symbolSize * 0.42, centerY, symbolSize * 0.58, SERVICE_COLORS.twin).setStrokeStyle(2, outline);
+        break;
     }
 
     if (inactive) {
       this.renderMissingRequirementSlash(centerX, centerY, symbolSize);
+    }
+
+    if (evaluatePlacements(this.level, displayedPlacements).amplified.has(placementKey(placement))) {
+      this.add.text(centerX + symbolSize, centerY + symbolSize, "+", { fontFamily: "system-ui, sans-serif", fontSize: `${Math.max(12, symbolSize)}px`, fontStyle: "bold", color: "#30474a" }).setOrigin(0.5);
     }
 
     if (!this.showSolutionPreview && this.isClue(placement.position)) {
@@ -631,7 +686,7 @@ export class JigsawScene extends Phaser.Scene {
 
     for (const placement of placements) {
       if (placement.service === "farm") {
-        const supplier = supplyingDam(placements, placement);
+        const supplier = supplyingDam(this.level, placements, placement);
 
         if (supplier) {
           links.push(createSupportLink(placement, supplier));
@@ -639,7 +694,7 @@ export class JigsawScene extends Phaser.Scene {
       }
 
       if (placement.service === "factory") {
-        const suppliers = factorySuppliers(placements, placement);
+        const suppliers = factorySuppliers(this.level, placements, placement);
 
         if (suppliers.power) {
           links.push(createSupportLink(placement, suppliers.power));
@@ -744,7 +799,7 @@ export class JigsawScene extends Phaser.Scene {
       ? hoveredRegion === null ? [] : [hoveredRegion]
       : [...new Set(this.level.regions.flat())];
     const pending = regions.flatMap((region) => {
-      const unmet = unmetResourcesForRegion(this.level, placements, region, (currentPlacements, placement) => this.placementIsActive(currentPlacements, placement));
+      const unmet = unmetResourcesForRegion(this.level, placements, region);
 
       if (unmet.length === 0) {
         return [];
@@ -895,6 +950,10 @@ export class JigsawScene extends Phaser.Scene {
       case "factory":
         this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(1, outline).setAlpha(alpha).setDepth(depth);
         break;
+      case "twin":
+        this.add.circle(centerX - symbolSize * 0.4, centerY, symbolSize * 0.55, SERVICE_COLORS.twin).setStrokeStyle(1, outline).setAlpha(alpha).setDepth(depth);
+        this.add.circle(centerX + symbolSize * 0.4, centerY, symbolSize * 0.55, SERVICE_COLORS.twin).setStrokeStyle(1, outline).setAlpha(alpha).setDepth(depth);
+        break;
     }
   }
 
@@ -943,6 +1002,10 @@ export class JigsawScene extends Phaser.Scene {
         break;
       case "factory":
         this.add.rectangle(centerX, centerY, symbolSize * 1.55, symbolSize * 1.55, SERVICE_COLORS.factory).setStrokeStyle(1, 0x30474a).setDepth(22);
+        break;
+      case "twin":
+        this.add.circle(centerX - symbolSize * 0.4, centerY, symbolSize * 0.55, SERVICE_COLORS.twin).setStrokeStyle(1, 0x30474a).setDepth(22);
+        this.add.circle(centerX + symbolSize * 0.4, centerY, symbolSize * 0.55, SERVICE_COLORS.twin).setStrokeStyle(1, 0x30474a).setDepth(22);
         break;
     }
   }
@@ -1022,7 +1085,7 @@ export class JigsawScene extends Phaser.Scene {
     this.commit([...this.placements, candidate]);
     this.placementMenuPosition = null;
     const remainingFarms = this.placements.filter((placement) => placement.service === "farm" && !this.farmIsSupplied(this.placements, placement)).length;
-    const inactiveFactoryCount = inactiveFactories(this.placements).length;
+    const inactiveFactoryCount = inactiveFactories(this.level, this.placements).length;
     const inactive = !this.placementIsActive(this.placements, candidate);
     const complete = this.isComplete();
     this.status = complete
@@ -1044,13 +1107,11 @@ export class JigsawScene extends Phaser.Scene {
   }
 
   private farmIsSupplied(placements: readonly ServicePlacement[], farm: ServicePlacement): boolean {
-    return isFarmSupplied(placements, farm);
+    return isFarmSupplied(this.level, placements, farm);
   }
 
   private placementIsActive(placements: readonly ServicePlacement[], placement: ServicePlacement): boolean {
-    return placement.service === "farm"
-      ? this.farmIsSupplied(placements, placement)
-      : isPlacementActive(placements, placement);
+    return isPlacementActive(this.level, placements, placement);
   }
 
   private playPlacementSounds(previous: readonly ServicePlacement[], placement: ServicePlacement, complete: boolean): void {
@@ -1321,6 +1382,8 @@ function symbolLabel(service: ServiceType): string {
       return "Triangle";
     case "factory":
       return "Square";
+    case "twin":
+      return "Twin";
   }
 }
 
@@ -1334,6 +1397,8 @@ function symbolCode(service: ServiceType): string {
       return "TRI";
     case "factory":
       return "SQR";
+    case "twin":
+      return "TWN";
   }
 }
 
@@ -1353,6 +1418,8 @@ function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): 
       return "That cell is outside the grid.";
     case "dead-region":
       return "Dead terrain cannot hold a symbol.";
+    case "landmark-cell":
+      return "That landmark occupies this cell.";
     case "occupied-cell":
       return "Only one symbol may occupy a cell.";
     case "inventory-exhausted":
@@ -1365,8 +1432,6 @@ function placementMessage(issue: ReturnType<typeof validatePlacement>[number]): 
       return "That region already has this symbol.";
     case "generator-water-conflict":
       return "Circle and Diamond cannot share an edge.";
-    case "farm-dam-missing":
-      return "Triangle must share an edge with Diamond.";
     case "factory-steel-demand-missing":
       return "Square may only be placed in a region that requires Square.";
   }

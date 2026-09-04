@@ -5,6 +5,7 @@ import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, 
 
 export const BOARD_SIZES = [5, 6, 8] as const;
 export type BoardSize = (typeof BOARD_SIZES)[number];
+export const CORE_SERVICE_TYPES = ["generator", "water", "farm", "factory"] as const;
 
 const PLACEMENT_ORDER: readonly ServiceType[] = ["water", "farm", "generator"];
 const cellsBySize = new Map<number, readonly Position[]>();
@@ -16,6 +17,8 @@ export interface GeneratedJigsawLevel extends JigsawPuzzle {
 export type QuotaOverrides = Readonly<Partial<Record<ServiceType, ServiceQuota>>>;
 export type ChordDifficulty = "guided" | "standard" | "expert";
 export type RegionTopology = "connected" | "tunnels";
+export const EXPERIMENTAL_PROFILES = ["twin", "sanctuary", "echo", "catalyst", "amplifier", "portal"] as const;
+export type ExperimentalProfile = (typeof EXPERIMENTAL_PROFILES)[number];
 
 const CHORD_CLUE_COUNTS: Readonly<Record<ChordDifficulty, number>> = {
   guided: 3,
@@ -26,7 +29,7 @@ const CHORD_CLUE_COUNTS: Readonly<Record<ChordDifficulty, number>> = {
 export function generateJigsawLevel(
   seed: number,
   size: BoardSize = 6,
-  activeServices: readonly ServiceType[] = SERVICE_TYPES,
+  activeServices: readonly ServiceType[] = CORE_SERVICE_TYPES,
   quotaOverrides: QuotaOverrides = {},
   steelRegions: readonly string[] = [],
   topology: RegionTopology = "connected",
@@ -132,7 +135,7 @@ export function generateRegionLayout(seed: number, size: BoardSize = 8, topology
 export function generateChordLevel(seed: number, difficulty: ChordDifficulty = "standard"): GeneratedJigsawLevel {
   for (let attempt = 0; attempt < 48; attempt += 1) {
     const candidateSeed = (seed + attempt) >>> 0;
-    const generated = generateJigsawLevel(candidateSeed, 6, SERVICE_TYPES, {}, [], "tunnels");
+    const generated = generateJigsawLevel(candidateSeed, 6, CORE_SERVICE_TYPES, {}, [], "tunnels");
     const clues = reduceToUniqueClues(generated.level, generated.solution, CHORD_CLUE_COUNTS[difficulty], seededRandom(candidateSeed ^ 0x9e3779b9));
 
     if (clues.length === CHORD_CLUE_COUNTS[difficulty] && countSolutions(generated.level, clues) === 1) {
@@ -202,8 +205,11 @@ function regionDefinitionsFor(
 export function jigsawLevelSignature(puzzle: Pick<JigsawPuzzle, "level" | "solution">): string {
   const regions = puzzle.level.regions.map((row) => row.join("")).join("/");
   const services = puzzle.solution.map((placement) => `${placement.service}:${placement.position.row}:${placement.position.column}`).join("/");
+  const landmarks = (puzzle.level.landmarks ?? []).map((landmark) => landmark.type === "portal"
+    ? `${landmark.type}:${landmark.pair}:${landmark.position.row}:${landmark.position.column}:${landmark.mouth.row}:${landmark.mouth.column}`
+    : `${landmark.type}:${landmark.position.row}:${landmark.position.column}`).sort().join("/");
 
-  return `${puzzle.level.size}|${regions}|${services}`;
+  return `${puzzle.level.size}|${regions}|${landmarks}|${services}`;
 }
 
 function transformRegions(regions: readonly (readonly string[])[], size: BoardSize, transform: number): readonly (readonly string[])[] {

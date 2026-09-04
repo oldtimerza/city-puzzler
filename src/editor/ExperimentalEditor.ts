@@ -2,12 +2,14 @@ import { analyzeJigsawComplexity, type JigsawAnalysis } from "../jigsaw/analysis
 import { regionComponents, validateLevel } from "../jigsaw/rules.js";
 import { solveJigsaw } from "../jigsaw/solver.js";
 import { generateRegionLayout } from "../jigsaw/generator.js";
-import type { Position } from "../jigsaw/position.js";
-import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
+import { samePosition, type Position } from "../jigsaw/position.js";
+import { SERVICE_RESOURCES, SERVICE_TYPES, type JigsawLevel, type JigsawPuzzle, type Landmark, type ServicePlacement, type ServiceQuota, type ServiceType } from "../jigsaw/types.js";
 
 const EDITOR_SIZES = [6, 8] as const;
 type EditorSize = (typeof EDITOR_SIZES)[number];
 const DEAD_REGION_IDS = ["X", "Y"] as const;
+const LANDMARK_TOOLS = ["echo", "catalyst", "amplifier", "portal", "erase"] as const;
+type LandmarkTool = (typeof LANDMARK_TOOLS)[number];
 const REGION_COLORS: Readonly<Record<string, string>> = {
   A: "#f0c4c4",
   B: "#91d46f",
@@ -28,11 +30,17 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
   let regions = defaultRegions(boardSize);
   let nextLayoutSeed = Date.now() >>> 0;
   const requirements = new Map<string, Set<ServiceType>>(regionIdsForSize(boardSize).map((region) => [region, new Set(activeServices)]));
+  const sanctuaries = new Set<string>();
+  let landmarks: Landmark[] = [];
+  let selectedLandmark: LandmarkTool | null = null;
+  let portalPair = "A";
+  let pendingPortalEndpoint: Position | null = null;
+  let editorMessage: string | null = null;
   let solvedPlacements: readonly ServicePlacement[] | null = null;
   let solveMessage: string | null = null;
   let complexityAnalysis: JigsawAnalysis | null = null;
 
-  const level = (): JigsawLevel => buildLevel(boardSize, regions, activeServices, requirements);
+  const level = (): JigsawLevel => buildLevel(boardSize, regions, activeServices, requirements, sanctuaries, landmarks);
 
   const render = (): void => {
     const draft = level();
@@ -52,7 +60,9 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
         <div class="editor-board" style="--editor-size: ${boardSize}" aria-label="Editable ${boardSize} by ${boardSize} region map">
           ${regions.flatMap((row, rowIndex) => row.map((region, column) => {
             const solution = solutionByPosition.get(`${rowIndex}:${column}`);
-            return `<button class="editor-cell ${isDeadRegion(region) ? "dead" : ""}" type="button" data-editor-cell="${rowIndex}:${column}" style="--region-color: ${REGION_COLORS[region]}" aria-label="Row ${rowIndex + 1}, column ${column + 1}, ${isDeadRegion(region) ? `dead region ${region}` : `region ${region}`}"><span>${region}</span>${solution ? `<strong class="editor-solution ${solution.service}">${symbolCode(solution.service)}</strong>` : ""}</button>`;
+            const landmark = landmarks.find((candidate) => candidate.position.row === rowIndex && candidate.position.column === column);
+            const portalMouth = landmarks.find((candidate) => candidate.type === "portal" && candidate.mouth.row === rowIndex && candidate.mouth.column === column);
+            return `<button class="editor-cell ${isDeadRegion(region) ? "dead" : ""} ${sanctuaries.has(region) ? "sanctuary" : ""}" type="button" data-editor-cell="${rowIndex}:${column}" style="--region-color: ${REGION_COLORS[region]}" aria-label="Row ${rowIndex + 1}, column ${column + 1}, ${isDeadRegion(region) ? `dead region ${region}` : `${sanctuaries.has(region) ? "Sanctuary" : "normal"} region ${region}`} "><span>${region}</span>${landmark ? `<i class="editor-landmark ${landmark.type}">${landmarkCode(landmark)}</i>` : portalMouth ? "<i class=\"editor-landmark mouth\">o</i>" : ""}${solution ? `<strong class="editor-solution ${solution.service}">${symbolCode(solution.service)}</strong>` : ""}</button>`;
           })).join("")}
         </div>
         ${renderTunnelArches(tunnelArches, boardSize)}
@@ -86,9 +96,27 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
           ${SERVICE_TYPES.map((service) => `<button class="editor-requirement ${selectedRequirements.has(service) ? "selected" : ""}" type="button" data-editor-requirement="${service}" ${isDeadRegion(selectedRegion) || !activeServices.has(service) ? "disabled" : ""}>${symbolLabel(service)}</button>`).join("")}
         </div>
       </section>
+      <section class="editor-section editor-region-kind" aria-labelledby="editor-region-kind-title">
+        <h4 id="editor-region-kind-title">Region type</h4>
+        <p>${isDeadRegion(selectedRegion) ? "Dead terrain is painted with the region brush." : "Sanctuary only protects Circle and Diamond when both marks share an edge inside this region."}</p>
+        <div class="editor-region-kind-buttons" role="group" aria-label="Type for region ${selectedRegion}">
+          <button class="editor-region-kind ${!isDeadRegion(selectedRegion) && !sanctuaries.has(selectedRegion) ? "selected" : ""}" type="button" data-editor-region-kind="normal" ${isDeadRegion(selectedRegion) ? "disabled" : ""}>Normal</button>
+          <button class="editor-region-kind ${sanctuaries.has(selectedRegion) ? "selected" : ""}" type="button" data-editor-region-kind="sanctuary" ${isDeadRegion(selectedRegion) ? "disabled" : ""}>Sanctuary</button>
+        </div>
+      </section>
+      <section class="editor-section editor-landmarks" aria-labelledby="editor-landmarks-title">
+        <h4 id="editor-landmarks-title">Landmarks</h4>
+        <p>${pendingPortalEndpoint ? `Portal endpoint selected at row ${pendingPortalEndpoint.row + 1}, column ${pendingPortalEndpoint.column + 1}. Click its orthogonal mouth.` : selectedLandmark === "portal" ? "Click an endpoint, then its orthogonal mouth. Use the same pair ID for two endpoints." : "Choose a fixture, then click a normal cell. Erase also clears a Portal using that cell as its mouth."}</p>
+        <div class="editor-landmark-buttons" role="toolbar" aria-label="Landmark tools">
+          ${LANDMARK_TOOLS.map((tool) => `<button class="editor-landmark-tool ${selectedLandmark === tool ? "selected" : ""}" type="button" data-editor-landmark="${tool}" aria-pressed="${selectedLandmark === tool}">${landmarkLabel(tool)}</button>`).join("")}
+        </div>
+        <div class="editor-landmark-description" aria-live="polite">${escapeHtml(landmarkDescription(selectedLandmark))}</div>
+        <label class="editor-portal-pair">Portal pair <input data-editor-portal-pair value="${escapeHtml(portalPair)}" maxlength="24" ${selectedLandmark !== "portal" ? "disabled" : ""}></label>
+        <span class="editor-landmark-count">${landmarks.length} fixture${landmarks.length === 1 ? "" : "s"} placed</span>
+      </section>
       <section class="editor-validation ${issues.length === 0 ? "valid" : "invalid"}" aria-live="polite">
         <strong>${issues.length === 0 ? "Valid draft" : "Draft needs attention"}</strong>
-        <span>${issues.length === 0 ? tunnelArches.length === 0 ? `${normalRegionCount} normal regions and ${deadCellCount} dead cells.` : `Tunnel districts: ${tunnelArches.map((tunnel) => tunnel.region).join(", ")}.` : issues.map(issueLabel).join(" ")}</span>
+        <span>${issues.length === 0 ? editorMessage ?? (tunnelArches.length === 0 ? `${normalRegionCount} normal regions and ${deadCellCount} dead cells.` : `Tunnel districts: ${tunnelArches.map((tunnel) => tunnel.region).join(", ")}.`) : issues.map(issueLabel).join(" ")}</span>
       </section>
       <section class="editor-section editor-solver" aria-labelledby="editor-solver-title">
         <h4 id="editor-solver-title">Board test</h4>
@@ -122,6 +150,8 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
     const region = button.dataset.editorRegion;
     const cell = button.dataset.editorCell;
     const service = button.dataset.editorRequirement as ServiceType | undefined;
+    const regionKind = button.dataset.editorRegionKind;
+    const landmarkTool = button.dataset.editorLandmark as LandmarkTool | undefined;
     const size = Number(button.dataset.editorSize) as EditorSize;
 
     let changed = false;
@@ -132,14 +162,32 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
       changed = true;
     } else if (region) {
       selectedRegion = region;
+      editorMessage = null;
     } else if (cell) {
       const [row = 0, column = 0] = cell.split(":").map(Number);
-      regions[row]![column] = selectedRegion;
-      changed = true;
+      const position = { row, column };
+      if (selectedLandmark) {
+        changed = editLandmark(position);
+      } else {
+        regions[row]![column] = selectedRegion;
+        removeLandmarksAt(position);
+        changed = true;
+      }
     } else if (service && !isDeadRegion(selectedRegion) && activeServices.has(service)) {
       const regionRequirements = requirements.get(selectedRegion)!;
       regionRequirements.has(service) ? regionRequirements.delete(service) : regionRequirements.add(service);
       changed = true;
+    } else if (regionKind && !isDeadRegion(selectedRegion)) {
+      sanctuaries.delete(selectedRegion);
+      if (regionKind === "sanctuary") {
+        sanctuaries.clear();
+        sanctuaries.add(selectedRegion);
+      }
+      changed = true;
+    } else if (landmarkTool && LANDMARK_TOOLS.includes(landmarkTool)) {
+      selectedLandmark = selectedLandmark === landmarkTool ? null : landmarkTool;
+      pendingPortalEndpoint = null;
+      editorMessage = null;
     } else if (button.dataset.editorReset !== undefined) {
       resetLayout();
       changed = true;
@@ -147,6 +195,8 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
       nextLayoutSeed = (nextLayoutSeed + 1) >>> 0;
       regions = generateRegionLayout(nextLayoutSeed, boardSize).map((regionRow) => [...regionRow]);
       selectedRegion = "A";
+      landmarks = [];
+      sanctuaries.clear();
       changed = true;
     } else if (button.dataset.editorSolve !== undefined) {
       solveDraft();
@@ -183,9 +233,19 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
     const input = event.target instanceof HTMLInputElement ? event.target : null;
     const service = input?.dataset.editorService as ServiceType | undefined;
 
-    if (!input || !service) {
+    if (!input) {
       return;
     }
+
+    if (input.dataset.editorPortalPair !== undefined) {
+      portalPair = input.value.trim().slice(0, 24) || "A";
+      pendingPortalEndpoint = null;
+      editorMessage = null;
+      render();
+      return;
+    }
+
+    if (!service) return;
 
     if (input.checked) {
       activeServices.add(service);
@@ -215,6 +275,72 @@ export function mountExperimentalEditor(boardRoot: HTMLElement, toolsRoot: HTMLE
     selectedRegion = "A";
     requirements.clear();
     regionIdsForSize(boardSize).forEach((region) => requirements.set(region, new Set(activeServices)));
+    sanctuaries.clear();
+    landmarks = [];
+    selectedLandmark = null;
+    pendingPortalEndpoint = null;
+    editorMessage = null;
+  }
+
+  function editLandmark(position: Position): boolean {
+    const tool = selectedLandmark;
+
+    if (tool === null) return false;
+
+    if (regionAtPosition(position) === undefined || isDeadRegion(regionAtPosition(position)!)) {
+      editorMessage = "Landmarks need a normal cell.";
+      return false;
+    }
+
+    if (tool === "erase") {
+      const before = landmarks.length;
+      removeLandmarksAt(position);
+      editorMessage = before === landmarks.length ? "No landmark uses that cell." : "Landmark removed.";
+      return before !== landmarks.length;
+    }
+
+    if (tool === "portal") {
+      if (pendingPortalEndpoint === null) {
+        if (landmarkUsesPosition(position)) {
+          editorMessage = "Remove the existing landmark before placing a Portal endpoint.";
+          return false;
+        }
+        pendingPortalEndpoint = position;
+        editorMessage = `Endpoint selected. Choose an orthogonal mouth for Portal pair ${portalPair}.`;
+        return false;
+      }
+
+      if (Math.abs(pendingPortalEndpoint.row - position.row) + Math.abs(pendingPortalEndpoint.column - position.column) !== 1 || landmarkUsesPosition(position)) {
+        editorMessage = "A Portal mouth must be an empty orthogonal neighbour of its endpoint.";
+        return false;
+      }
+      landmarks.push({ type: "portal", pair: portalPair, position: pendingPortalEndpoint, mouth: position });
+      pendingPortalEndpoint = null;
+      editorMessage = `Portal endpoint added to pair ${portalPair}. Add one more endpoint with this pair ID.`;
+      return true;
+    }
+
+    removeLandmarksAt(position);
+    landmarks.push({ type: tool, position });
+    editorMessage = `${landmarkLabel(tool)} placed.`;
+    return true;
+  }
+
+  function removeLandmarksAt(position: Position): void {
+    landmarks = landmarks.filter((landmark) => !(samePosition(landmark.position, position) || (landmark.type === "portal" && samePosition(landmark.mouth, position))));
+    if (pendingPortalEndpoint && samePosition(pendingPortalEndpoint, position)) pendingPortalEndpoint = null;
+  }
+
+  function landmarkAtPosition(position: Position): Landmark | undefined {
+    return landmarks.find((landmark) => samePosition(landmark.position, position));
+  }
+
+  function landmarkUsesPosition(position: Position): boolean {
+    return landmarks.some((landmark) => samePosition(landmark.position, position) || (landmark.type === "portal" && samePosition(landmark.mouth, position)));
+  }
+
+  function regionAtPosition(position: Position): string | undefined {
+    return regions[position.row]?.[position.column];
   }
 
   function solveDraft(): readonly ServicePlacement[] | null {
@@ -249,6 +375,8 @@ function buildLevel(
   regions: readonly (readonly string[])[],
   activeServices: ReadonlySet<ServiceType>,
   requirements: ReadonlyMap<string, ReadonlySet<ServiceType>>,
+  sanctuaries: ReadonlySet<string>,
+  landmarks: readonly Landmark[],
 ): JigsawLevel {
   const usedRegions = new Set(regions.flat());
   const regionDefinitions = Object.fromEntries([...usedRegions].map((region) => isDeadRegion(region)
@@ -256,6 +384,7 @@ function buildLevel(
     : [region, {
         type: "normal",
         requirements: Object.fromEntries([...(requirements.get(region) ?? [])].map((service) => [SERVICE_RESOURCES[service], 1])),
+        ...(sanctuaries.has(region) ? { sanctuary: true } : {}),
       }])) as JigsawLevel["regionDefinitions"];
 
   const quotas = Object.fromEntries(SERVICE_TYPES.map((service) => {
@@ -264,7 +393,7 @@ function buildLevel(
     return [service, { total: activeServices.has(service) ? total : 0, maxPerRow: activeServices.has(service) ? 1 : 0, maxPerColumn: activeServices.has(service) ? 1 : 0, maxPerRegion: activeServices.has(service) ? 1 : 0 } satisfies ServiceQuota];
   })) as JigsawLevel["quotas"];
 
-  return { size, regions, regionDefinitions, activeServices: [...activeServices], quotas };
+  return { size, regions, regionDefinitions, activeServices: [...activeServices], quotas, landmarks };
 }
 
 function defaultRegions(size: EditorSize): string[][] {
@@ -277,7 +406,7 @@ function regionIdsForSize(size: EditorSize): readonly string[] {
 }
 
 function symbolLabel(service: ServiceType): string {
-  return ({ generator: "Circle", water: "Diamond", farm: "Triangle", factory: "Square" })[service];
+  return ({ generator: "Circle", water: "Diamond", farm: "Triangle", factory: "Square", twin: "Twin" })[service];
 }
 
 function isDeadRegion(region: string): boolean {
@@ -361,7 +490,32 @@ function positionKey(position: Position): string {
 }
 
 function symbolCode(service: ServiceType): string {
-  return ({ generator: "C", water: "D", farm: "T", factory: "S" })[service];
+  return ({ generator: "C", water: "D", farm: "T", factory: "S", twin: "W" })[service];
+}
+
+function landmarkLabel(landmark: LandmarkTool): string {
+  return ({ echo: "Echo", catalyst: "Catalyst", amplifier: "Amplifier", portal: "Portal", erase: "Erase" })[landmark];
+}
+
+function landmarkCode(landmark: Landmark): string {
+  return landmark.type === "echo" ? "E" : landmark.type === "catalyst" ? "*" : landmark.type === "amplifier" ? "+" : "P";
+}
+
+function landmarkDescription(landmark: LandmarkTool | null): string {
+  switch (landmark) {
+    case "echo":
+      return "Echo copies the identities of placed shapes on its physical edge-neighbours. Its copy can support nearby shapes or create a Circle-Diamond conflict.";
+    case "catalyst":
+      return "Catalyst activates an adjacent Triangle, Square, or Twin. It does not provide a shape identity or resource.";
+    case "amplifier":
+      return "Amplifier makes each adjacent active shape supply two copies of its resource to its own region. It never activates a shape.";
+    case "portal":
+      return "Portal endpoints with the same pair ID connect their mouth cells. Click an endpoint, then its orthogonal mouth, and repeat for its partner.";
+    case "erase":
+      return "Erase removes a landmark endpoint or a Portal using the clicked cell as its mouth.";
+    case null:
+      return "Select a fixture to see how it changes a level, then click a normal board cell to place it.";
+  }
 }
 
 function issueLabel(issue: string): string {

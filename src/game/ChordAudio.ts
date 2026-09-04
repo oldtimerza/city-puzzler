@@ -5,6 +5,7 @@ const PLACEMENT_PITCHES: Readonly<Record<ServiceType, number>> = {
   water: 587.33,
   farm: 659.25,
   factory: 392,
+  twin: 440,
 };
 
 export class ChordAudio {

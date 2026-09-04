@@ -1,7 +1,7 @@
 import { isLevelComplete, validateLevel, validatePlacement } from "./rules.js";
 import { type JigsawLevel, type ServicePlacement, type ServiceType } from "./types.js";
 
-const PLACEMENT_ORDER: readonly ServiceType[] = ["water", "farm", "generator", "factory"];
+const PLACEMENT_ORDER: readonly ServiceType[] = ["water", "farm", "generator", "factory", "twin"];
 
 export function countSolutions(level: JigsawLevel, clues: readonly ServicePlacement[], limit = 2): number {
   return solveJigsaw(level, clues, limit).length;

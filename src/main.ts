@@ -409,6 +409,8 @@ function symbolLabel(service: ServiceType): string {
       return "Triangle";
     case "factory":
       return "Square";
+    case "twin":
+      return "Twin";
   }
 }
 

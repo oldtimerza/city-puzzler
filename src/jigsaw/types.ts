@@ -1,7 +1,7 @@
 import type { Position } from "./position.js";
 
-export const SERVICE_TYPES = ["generator", "water", "farm", "factory"] as const;
-export const RESOURCE_TYPES = ["food", "water", "power", "steel"] as const;
+export const SERVICE_TYPES = ["generator", "water", "farm", "factory", "twin"] as const;
+export const RESOURCE_TYPES = ["food", "water", "power", "steel", "bond"] as const;
 
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 export type ResourceType = (typeof RESOURCE_TYPES)[number];
@@ -11,13 +11,20 @@ export const SERVICE_RESOURCES: Readonly<Record<ServiceType, ResourceType>> = {
   water: "water",
   farm: "food",
   factory: "steel",
+  twin: "bond",
 };
 
 export type RegionResourceRequirements = Readonly<Partial<Record<ResourceType, number>>>;
 
 export type RegionDefinition =
-  | Readonly<{ type: "normal"; requirements: RegionResourceRequirements }>
+  | Readonly<{ type: "normal"; requirements: RegionResourceRequirements; sanctuary?: boolean }>
   | Readonly<{ type: "dead" }>;
+
+export type Landmark =
+  | Readonly<{ type: "echo"; position: Position }>
+  | Readonly<{ type: "catalyst"; position: Position }>
+  | Readonly<{ type: "amplifier"; position: Position }>
+  | Readonly<{ type: "portal"; pair: string; position: Position; mouth: Position }>;
 
 export interface ServiceQuota {
   readonly total: number;
@@ -37,6 +44,8 @@ export interface JigsawLevel {
   readonly regionDefinitions: Readonly<Record<string, RegionDefinition>>;
   readonly activeServices: readonly ServiceType[];
   readonly quotas: Readonly<Record<ServiceType, ServiceQuota>>;
+  /** Omitted by standard Chord. Landmarks occupy their positions. */
+  readonly landmarks?: readonly Landmark[];
 }
 
 export interface JigsawPuzzle {

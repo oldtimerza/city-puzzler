@@ -92,8 +92,47 @@ Generated boards construct a valid full placement, derive immutable clues, and a
 
 New Chord and editor-randomised boards generate one or two tunnel districts. Authored campaign lessons retain physically connected districts unless explicitly designed otherwise.
 
+## Experimental Landmarks
+
+Experimental profiles add these fixtures without changing standard Chord. A Landmark occupies its cell, cannot be moved onto, and is excluded from symbol inventory, row, column, district, resource, and requirement counts. Landmark effects are evaluated by the rule engine only; the renderer reads its evaluation rather than recreating rules.
+
+### Twin
+
+Twin is an experimental movable symbol with its own `bond` requirement mark. A Twin is active only when exactly one interaction neighbour presents Twin identity. Zero or two-or-more Twin neighbours leave it inactive, and every placed Twin must be active at completion. Portal edges count; an Echo may present the identity; a physically adjacent Catalyst may activate a Twin instead.
+
+### Sanctuary
+
+A normal region may be marked `sanctuary: true` (at most one per level). Within that region only, a Circle and Diamond identity may share a physical or Portal interaction edge. The exemption is edge-local: it does not cross the region boundary and does not alter support, quotas, requirements, district topology, or diagonal relationships.
+
+### Echo, Catalyst, And Amplifier
+
+An Echo copies identities, but never resources, from actual shapes in its physical orthogonal neighbours. It ignores Portal neighbours, Landmarks, and Echo output, so copying is one-hop and includes inactive shapes. Its copied identities are available at the Echo cell for support and Circle-Diamond exclusion.
+
+A Catalyst physically adjacent to Triangle, Square, or Twin activates that shape after normal activation has been evaluated. It never supplies an identity or resource. An Amplifier physically adjacent to a final active shape makes that shape supply two copies of its normal resource to its own region. Catalyst precedes Amplifier; neither effect stacks and Echo identities cannot be amplified.
+
+### Portal Pairs
+
+A Portal uses two endpoint Landmarks with the same non-empty `pair` name. Each endpoint has an orthogonally adjacent `mouth`; the two mouths form one undirected virtual orthogonal edge. Endpoints and mouths must be in normal cells, endpoints may not overlap Landmarks, mouths may not be endpoints or coincide, and every pair has exactly two endpoints.
+
+Portal edges participate in orthogonal support, Twin relationships, and Circle-Diamond exclusion, but not diagonals or district connectivity. An endpoint's local mouth direction is retained on its side of the virtual edge for directional relationship rules added by future profiles.
+
+### Evaluation Order
+
+1. Build physical and Portal interaction edges.
+2. Add placed-shape identities.
+3. Add one-hop Echo identities.
+4. Apply Circle-Diamond exclusions, including Sanctuary.
+5. Evaluate normal activation.
+6. Apply Catalyst activation.
+7. Calculate regional supply.
+8. Apply Amplifier supply bonuses.
+9. Evaluate requirements and completion.
+
+`src/content/experimental-discovery-levels.ts` contains solver-certified discovery material. Its copy teaches through a visible relay rather than displaying these rules verbatim. Default Chord generation never includes experimental fixtures; experimental candidates must be solver-certified and rejected unless their featured fixture changes validity, supply, or solution count.
+
 ## Implementation References
 
 - `src/jigsaw/rules.ts`: base grammar and region requirements.
 - `src/jigsaw/generator.ts`: board generation and uniqueness solving.
 - `tests/jigsaw/rules.test.ts`: rule, generator, and difficulty verification.
+- `tests/jigsaw/landmarks.test.ts`: experimental fixture, ordering, malformed-data, and preservation coverage.
