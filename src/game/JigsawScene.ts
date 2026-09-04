@@ -33,6 +33,13 @@ interface RequirementCallout {
   centerY: number;
 }
 
+interface CalloutBounds {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 interface SupportLink {
   readonly dependent: ServicePlacement;
   readonly supplier: ServicePlacement;
@@ -76,6 +83,7 @@ export class JigsawScene extends Phaser.Scene {
   private boardLeft = 0;
   private boardTop = 0;
   private cellSize = 0;
+  private calloutBounds: readonly CalloutBounds[] = [];
 
   constructor() {
     super(JigsawScene.KEY);
@@ -96,6 +104,8 @@ export class JigsawScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.renderBoard, this));
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.dismissPlacementMenuOutsideBoard, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.off(Phaser.Input.Events.POINTER_DOWN, this.dismissPlacementMenuOutsideBoard, this));
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, this.moveCalloutsAwayFromPointer, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.off(Phaser.Input.Events.POINTER_MOVE, this.moveCalloutsAwayFromPointer, this));
     this.renderBoard();
     this.publishState();
   }
@@ -340,6 +350,7 @@ export class JigsawScene extends Phaser.Scene {
 
   private renderBoard(): void {
     this.children.removeAll(true);
+    this.calloutBounds = [];
 
     const boardMargin = Math.max(82, Math.round(Math.min(this.scale.width, this.scale.height) * 0.1));
     const boardPixels = Math.min(this.scale.width, this.scale.height) - boardMargin * 2;
@@ -710,7 +721,7 @@ export class JigsawScene extends Phaser.Scene {
       graphics.lineStyle(1.5, 0x30474a, 0.9);
       graphics.strokeRoundedRect(left, top, callout.width, callout.height, callout.height / 2);
 
-      const symbolSize = Math.max(4, Math.round(this.cellSize * 0.06));
+      const symbolSize = Math.max(5, Math.round(this.cellSize * 0.08));
       const spacing = symbolSize * 2.35;
       const startX = callout.centerX - ((callout.services.length - 1) * spacing) / 2;
 
@@ -718,6 +729,13 @@ export class JigsawScene extends Phaser.Scene {
         this.renderSmallSymbol(service, startX + index * spacing, callout.centerY, symbolSize, 1, 7);
       });
     }
+
+    this.calloutBounds = callouts.map((callout) => ({
+      left: callout.centerX - callout.width / 2,
+      top: callout.centerY - callout.height / 2,
+      width: callout.width,
+      height: callout.height,
+    }));
   }
 
   private requirementCallouts(placements: readonly ServicePlacement[]): RequirementCallout[] {
@@ -735,9 +753,9 @@ export class JigsawScene extends Phaser.Scene {
       const services = unmet.map((resource) => RESOURCE_SYMBOLS[resource]);
       const side = this.calloutSide(region);
       const target = this.cellCenter(this.regionEdgeCell(region, side));
-      const symbolSize = Math.max(4, Math.round(this.cellSize * 0.06));
+      const symbolSize = Math.max(5, Math.round(this.cellSize * 0.08));
       const width = Math.max(30, services.length * symbolSize * 2.5 + 12);
-      const height = Math.max(21, symbolSize * 3.3 + 8);
+      const height = Math.max(25, symbolSize * 3.3 + 8);
 
       return [{ region, services, side, target, width, height, centerX: target.x, centerY: target.y }];
     });
@@ -768,7 +786,47 @@ export class JigsawScene extends Phaser.Scene {
       }
     }
 
+    this.moveCalloutsAwayFrom(this.input.activePointer, pending);
+
     return pending;
+  }
+
+  private moveCalloutsAwayFromPointer(pointer: Phaser.Input.Pointer): void {
+    if (this.calloutBounds.some((bounds) => pointIsNearBounds(pointer.x, pointer.y, bounds))) {
+      this.renderBoard();
+    }
+  }
+
+  private moveCalloutsAwayFrom(pointer: Phaser.Input.Pointer, callouts: readonly RequirementCallout[]): void {
+    const gap = 14;
+
+    for (const callout of callouts) {
+      const bounds = {
+        left: callout.centerX - callout.width / 2,
+        top: callout.centerY - callout.height / 2,
+        width: callout.width,
+        height: callout.height,
+      };
+
+      if (!pointIsNearBounds(pointer.x, pointer.y, bounds)) {
+        continue;
+      }
+
+      switch (callout.side) {
+        case "top":
+          callout.centerY = Math.max(callout.height / 2 + 6, Math.min(callout.centerY, pointer.y - callout.height / 2 - gap));
+          break;
+        case "bottom":
+          callout.centerY = Math.min(this.scale.height - callout.height / 2 - 6, Math.max(callout.centerY, pointer.y + callout.height / 2 + gap));
+          break;
+        case "left":
+          callout.centerX = Math.max(callout.width / 2 + 6, Math.min(callout.centerX, pointer.x - callout.width / 2 - gap));
+          break;
+        case "right":
+          callout.centerX = Math.min(this.scale.width - callout.width / 2 - 6, Math.max(callout.centerX, pointer.x + callout.width / 2 + gap));
+          break;
+      }
+    }
   }
 
   private calloutSide(region: string): CalloutSide {
@@ -1214,6 +1272,13 @@ function calloutArrowStart(callout: RequirementCallout): Readonly<{ x: number; y
 
 function arrowWing(side: CalloutSide): Readonly<{ x: number; y: number }> {
   return side === "top" || side === "bottom" ? { x: 4, y: 0 } : { x: 0, y: 4 };
+}
+
+function pointIsNearBounds(x: number, y: number, bounds: CalloutBounds, padding = 10): boolean {
+  return x >= bounds.left - padding
+    && x <= bounds.left + bounds.width + padding
+    && y >= bounds.top - padding
+    && y <= bounds.top + bounds.height + padding;
 }
 
 function positionKey(position: Position): string {
